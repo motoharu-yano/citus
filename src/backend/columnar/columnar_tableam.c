@@ -254,56 +254,15 @@ CreateColumnarScanMemoryContext(void)
  */
 static ColumnarReadState *
 init_columnar_read_state(Relation relation, TupleDesc tupdesc, Bitmapset *attr_needed,
-						 List *scanQual, MemoryContext scanContext, Snapshot snapshot)
+						 List *scanQual, MemoryContext scanContext, Snapshot snapshot,
+						 bool randomAccess)
 {
 	MemoryContext oldContext = MemoryContextSwitchTo(scanContext);
-
-	Oid relfilenode = relation->rd_node.relNode;
-	FlushWriteStateForRelfilenode(relfilenode, GetCurrentSubTransactionId());
-
-	bool snapshotRegisteredByUs = false;
-	if (snapshot != InvalidSnapshot && IsMVCCSnapshot(snapshot))
-	{
-		/*
-		 * If we flushed any pending writes, then we should guarantee that
-		 * those writes are visible to us too. For this reason, if given
-		 * snapshot is an MVCC snapshot, then we set its curcid to current
-		 * command id.
-		 *
-		 * For simplicity, we do that even if we didn't flush any writes
-		 * since we don't see any problem with that.
-		 *
-		 * XXX: We should either not update cid if we are executing a FETCH
-		 * (from cursor) command, or we should have a better way to deal with
-		 * pending writes, see the discussion in
-		 * https://github.com/citusdata/citus/issues/5231.
-		 */
-		PushCopiedSnapshot(snapshot);
-
-		/* now our snapshot is the active one */
-		UpdateActiveSnapshotCommandId();
-		snapshot = GetActiveSnapshot();
-		RegisterSnapshot(snapshot);
-
-		/*
-		 * To be able to use UpdateActiveSnapshotCommandId, we pushed the
-		 * copied snapshot to the stack. However, we don't need to keep it
-		 * there since we will anyway rely on ColumnarReadState->snapshot
-		 * during read operation.
-		 *
-		 * Note that since we registered the snapshot already, we guarantee
-		 * that PopActiveSnapshot won't free it.
-		 */
-		PopActiveSnapshot();
-
-		/* not forget to unregister it when finishing read operation */
-		snapshotRegisteredByUs = true;
-	}
 
 	List *neededColumnList = NeededColumnsList(tupdesc, attr_needed);
 	ColumnarReadState *readState = ColumnarBeginRead(relation, tupdesc, neededColumnList,
 													 scanQual, scanContext, snapshot,
-													 snapshotRegisteredByUs);
+													 randomAccess);
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -354,10 +313,12 @@ columnar_getnextslot(TableScanDesc sscan, ScanDirection direction, TupleTableSlo
 	 */
 	if (scan->cs_readState == NULL)
 	{
+		bool randomAccess = false;
 		scan->cs_readState =
 			init_columnar_read_state(scan->cs_base.rs_rd, slot->tts_tupleDescriptor,
 									 scan->attr_needed, scan->scanQual,
-									 scan->scanContext, scan->cs_base.rs_snapshot);
+									 scan->scanContext, scan->cs_base.rs_snapshot,
+									 randomAccess);
 	}
 
 	ExecClearTuple(slot);
@@ -436,33 +397,21 @@ ErrorIfInvalidRowNumber(uint64 rowNumber)
 static Size
 columnar_parallelscan_estimate(Relation rel)
 {
-	return sizeof(ParallelBlockTableScanDescData);
+	elog(ERROR, "columnar_parallelscan_estimate not implemented");
 }
 
 
 static Size
 columnar_parallelscan_initialize(Relation rel, ParallelTableScanDesc pscan)
 {
-	ParallelBlockTableScanDesc bpscan = (ParallelBlockTableScanDesc) pscan;
-
-	bpscan->base.phs_relid = RelationGetRelid(rel);
-	bpscan->phs_nblocks = RelationGetNumberOfBlocks(rel);
-	bpscan->base.phs_syncscan = synchronize_seqscans &&
-								!RelationUsesLocalBuffers(rel) &&
-								bpscan->phs_nblocks > NBuffers / 4;
-	SpinLockInit(&bpscan->phs_mutex);
-	bpscan->phs_startblock = InvalidBlockNumber;
-	pg_atomic_init_u64(&bpscan->phs_nallocated, 0);
-
-	return sizeof(ParallelBlockTableScanDescData);
+	elog(ERROR, "columnar_parallelscan_initialize not implemented");
 }
 
 
 static void
 columnar_parallelscan_reinitialize(Relation rel, ParallelTableScanDesc pscan)
 {
-	ParallelBlockTableScanDesc bpscan = (ParallelBlockTableScanDesc) pscan;
-	pg_atomic_write_u64(&bpscan->phs_nallocated, 0);
+	elog(ERROR, "columnar_parallelscan_reinitialize not implemented");
 }
 
 
@@ -546,11 +495,12 @@ columnar_index_fetch_tuple(struct IndexFetchTableData *sscan,
 		/* no quals for index scan */
 		List *scanQual = NIL;
 
+		bool randomAccess = true;
 		scan->cs_readState = init_columnar_read_state(columnarRelation,
 													  slot->tts_tupleDescriptor,
 													  attr_needed, scanQual,
 													  scan->scanContext,
-													  snapshot);
+													  snapshot, randomAccess);
 	}
 
 	uint64 rowNumber = tid_to_row_number(*tid);
@@ -562,7 +512,8 @@ columnar_index_fetch_tuple(struct IndexFetchTableData *sscan,
 		return false;
 	}
 
-	if (StripeIsFlushed(stripeMetadata) &&
+	StripeWriteStateEnum stripeWriteState = StripeWriteState(stripeMetadata);
+	if (stripeWriteState == STRIPE_WRITE_FLUSHED &&
 		!ColumnarReadRowByRowNumber(scan->cs_readState, rowNumber,
 									slot->tts_values, slot->tts_isnull))
 	{
@@ -573,8 +524,7 @@ columnar_index_fetch_tuple(struct IndexFetchTableData *sscan,
 		 */
 		return false;
 	}
-
-	if (!StripeIsFlushed(stripeMetadata))
+	else if (stripeWriteState == STRIPE_WRITE_ABORTED)
 	{
 		/*
 		 * We only expect to see un-flushed stripes when checking against
@@ -582,16 +532,73 @@ columnar_index_fetch_tuple(struct IndexFetchTableData *sscan,
 		 * snapshot to index_fetch_tuple callback.
 		 */
 		Assert(snapshot->snapshot_type == SNAPSHOT_DIRTY);
+		return false;
+	}
+	else if (stripeWriteState == STRIPE_WRITE_IN_PROGRESS)
+	{
+		if (stripeMetadata->insertedByCurrentXact)
+		{
+			/*
+			 * Stripe write is in progress and its entry is inserted by current
+			 * transaction, so obviously it must be written by me. Since caller
+			 * might want to use tupleslot datums for some reason, do another
+			 * look-up, but this time by first flushing our writes.
+			 *
+			 * XXX: For index scan, this is the only case that we flush pending
+			 * writes of the current backend. If we have taught reader how to
+			 * read from WriteStateMap. then we could guarantee that
+			 * index_fetch_tuple would never flush pending writes, but this seem
+			 * to be too much work for now, but should be doable.
+			 */
+			ColumnarReadFlushPendingWrites(scan->cs_readState);
 
+			/*
+			 * Fill the tupleslot and fall through to return true, it
+			 * certainly exists.
+			 */
+			ColumnarReadRowByRowNumberOrError(scan->cs_readState, rowNumber,
+											  slot->tts_values, slot->tts_isnull);
+		}
+		else
+		{
+			/* similar to aborted writes, it should be dirty snapshot */
+			Assert(snapshot->snapshot_type == SNAPSHOT_DIRTY);
+
+			/*
+			 * Stripe that "might" contain the tuple with rowNumber is not
+			 * flushed yet. Here we set all attributes of given tupleslot to NULL
+			 * before returning true and expect the indexAM callback that called
+			 * us --possibly to check against constraint violation-- blocks until
+			 * writer transaction commits or aborts, without requiring us to fill
+			 * the tupleslot properly.
+			 *
+			 * XXX: Note that the assumption we made above for the tupleslot
+			 * holds for "unique" constraints defined on "btree" indexes.
+			 *
+			 * For the other constraints that we support, namely:
+			 * * exclusion on btree,
+			 * * exclusion on hash,
+			 * * unique on btree;
+			 * we still need to fill tts_values.
+			 *
+			 * However, for the same reason, we should have already flushed
+			 * single tuple stripes when inserting into table for those three
+			 * classes of constraints.
+			 *
+			 * This is annoying, but this also explains why this hack works for
+			 * unique constraints on btree indexes, and also explains how we
+			 * would never end up with "else" condition otherwise.
+			 */
+			memset(slot->tts_isnull, true, slot->tts_nvalid * sizeof(bool));
+		}
+	}
+	else
+	{
 		/*
-		 * Stripe that "might" contain the tuple with rowNumber is not
-		 * flushed yet. Here we set all attributes of given tupleslot to NULL
-		 * before returning true and expect the indexAM callback that called
-		 * us --possibly to check against constraint violation-- blocks until
-		 * writer transaction commits or aborts, without requiring us to fill
-		 * the tupleslot properly.
+		 * At this point, we certainly know that stripe is flushed and
+		 * ColumnarReadRowByRowNumber successfully filled the tupleslot.
 		 */
-		memset(slot->tts_isnull, true, slot->tts_nvalid);
+		Assert(stripeWriteState == STRIPE_WRITE_FLUSHED);
 	}
 
 	slot->tts_tableOid = RelationGetRelid(columnarRelation);
@@ -900,9 +907,11 @@ columnar_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	Snapshot snapshot = SnapshotAny;
 
 	MemoryContext scanContext = CreateColumnarScanMemoryContext();
+	bool randomAccess = false;
 	ColumnarReadState *readState = init_columnar_read_state(OldHeap, sourceDesc,
 															attr_needed, scanQual,
-															scanContext, snapshot);
+															scanContext, snapshot,
+															randomAccess);
 
 	Datum *values = palloc0(sourceDesc->natts * sizeof(Datum));
 	bool *nulls = palloc0(sourceDesc->natts * sizeof(bool));
@@ -1279,22 +1288,10 @@ columnar_index_build_range_scan(Relation columnarRelation,
 	if (scan)
 	{
 		/*
-		 * Scan is initialized iff postgres decided to build the index using
-		 * parallel workers. In this case, we simply return for parallel
-		 * workers since we don't support parallel scan on columnar tables.
+		 * Parallel scans on columnar tables are already discardad by
+		 * ColumnarGetRelationInfoHook but be on the safe side.
 		 */
-		if (IsBackgroundWorker)
-		{
-			ereport(DEBUG4, (errmsg("ignoring parallel worker when building "
-									"index since parallel scan on columnar "
-									"tables is not supported")));
-			table_endscan(scan);
-			return 0;
-		}
-
-		ereport(NOTICE, (errmsg("falling back to serial index build since "
-								"parallel scan on columnar tables is not "
-								"supported")));
+		elog(ERROR, "parallel scans on columnar are not supported");
 	}
 
 	/*
@@ -1312,39 +1309,26 @@ columnar_index_build_range_scan(Relation columnarRelation,
 
 	Snapshot snapshot = { 0 };
 	bool snapshotRegisteredByUs = false;
-	if (!scan)
-	{
-		/*
-		 * For serial index build, we begin our own scan. We may also need to
-		 * register a snapshot whose lifetime is under our direct control.
-		 */
-		if (!TransactionIdIsValid(OldestXmin))
-		{
-			snapshot = RegisterSnapshot(GetTransactionSnapshot());
-			snapshotRegisteredByUs = true;
-		}
-		else
-		{
-			snapshot = SnapshotAny;
-		}
 
-		int nkeys = 0;
-		ScanKeyData *scanKey = NULL;
-		bool allowAccessStrategy = true;
-		scan = table_beginscan_strat(columnarRelation, snapshot, nkeys, scanKey,
-									 allowAccessStrategy, allow_sync);
+	/*
+	 * For serial index build, we begin our own scan. We may also need to
+	 * register a snapshot whose lifetime is under our direct control.
+	 */
+	if (!TransactionIdIsValid(OldestXmin))
+	{
+		snapshot = RegisterSnapshot(GetTransactionSnapshot());
+		snapshotRegisteredByUs = true;
 	}
 	else
 	{
-		/*
-		 * For parallel index build, we don't register/unregister own snapshot
-		 * since snapshot is taken from parallel scan. Note that even if we
-		 * don't support parallel index builds, we still continue building the
-		 * index via the main backend and we should still rely on the snapshot
-		 * provided by parallel scan.
-		 */
-		snapshot = scan->rs_snapshot;
+		snapshot = SnapshotAny;
 	}
+
+	int nkeys = 0;
+	ScanKeyData *scanKey = NULL;
+	bool allowAccessStrategy = true;
+	scan = table_beginscan_strat(columnarRelation, snapshot, nkeys, scanKey,
+								 allowAccessStrategy, allow_sync);
 
 	if (progress)
 	{
@@ -2099,17 +2083,6 @@ static const TableAmRoutine columnar_am_methods = {
 	.scan_rescan = columnar_rescan,
 	.scan_getnextslot = columnar_getnextslot,
 
-	/*
-	 * Postgres calls following three callbacks during index builds, if it
-	 * decides to use parallel workers when building the index. On the other
-	 * hand, we don't support parallel scans on columnar tables but we also
-	 * want to fallback to serial index build. For this reason, we both skip
-	 * parallel workers in columnar_index_build_range_scan and also provide
-	 * basic implementations for those callbacks based on their corresponding
-	 * implementations in heapAM.
-	 * Note that for regular query plans, we already ignore parallel paths via
-	 * ColumnarSetRelPathlistHook.
-	 */
 	.parallelscan_estimate = columnar_parallelscan_estimate,
 	.parallelscan_initialize = columnar_parallelscan_initialize,
 	.parallelscan_reinitialize = columnar_parallelscan_reinitialize,

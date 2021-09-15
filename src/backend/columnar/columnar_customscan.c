@@ -31,6 +31,7 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
+#include "optimizer/plancat.h"
 #include "optimizer/restrictinfo.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -95,12 +96,17 @@ static void AddColumnarScanPathsRec(PlannerInfo *root, RelOptInfo *rel,
 /* hooks and callbacks */
 static void ColumnarSetRelPathlistHook(PlannerInfo *root, RelOptInfo *rel, Index rti,
 									   RangeTblEntry *rte);
+static void ColumnarGetRelationInfoHook(PlannerInfo *root, Oid relationObjectId,
+										bool inhparent, RelOptInfo *rel);
 static Plan * ColumnarScanPath_PlanCustomPath(PlannerInfo *root,
 											  RelOptInfo *rel,
 											  struct CustomPath *best_path,
 											  List *tlist,
 											  List *clauses,
 											  List *custom_plans);
+static List * ColumnarScanPath_ReparameterizeCustomPathByChild(PlannerInfo *root,
+															   List *custom_private,
+															   RelOptInfo *child_rel);
 static Node * ColumnarScan_CreateCustomScanState(CustomScan *cscan);
 
 static void ColumnarScan_BeginCustomScan(CustomScanState *node, EState *estate,
@@ -126,6 +132,7 @@ static Bitmapset * ColumnarAttrNeeded(ScanState *ss);
 
 /* saved hook value in case of unload */
 static set_rel_pathlist_hook_type PreviousSetRelPathlistHook = NULL;
+static get_relation_info_hook_type PreviousGetRelationInfoHook = NULL;
 
 static bool EnableColumnarCustomScan = true;
 static bool EnableColumnarQualPushdown = true;
@@ -137,6 +144,7 @@ static int ColumnarPlannerDebugLevel = DEBUG3;
 const struct CustomPathMethods ColumnarScanPathMethods = {
 	.CustomName = "ColumnarScan",
 	.PlanCustomPath = ColumnarScanPath_PlanCustomPath,
+	.ReparameterizeCustomPathByChild = ColumnarScanPath_ReparameterizeCustomPathByChild,
 };
 
 const struct CustomScanMethods ColumnarScanScanMethods = {
@@ -179,6 +187,9 @@ columnar_customscan_init()
 {
 	PreviousSetRelPathlistHook = set_rel_pathlist_hook;
 	set_rel_pathlist_hook = ColumnarSetRelPathlistHook;
+
+	PreviousGetRelationInfoHook = get_relation_info_hook;
+	get_relation_info_hook = ColumnarGetRelationInfoHook;
 
 	/* register customscan specific GUC's */
 	DefineCustomBoolVariable(
@@ -274,8 +285,14 @@ ColumnarSetRelPathlistHook(PlannerInfo *root, RelOptInfo *rel, Index rti,
 							errmsg("sample scans not supported on columnar tables")));
 		}
 
-		/* columnar doesn't support parallel paths */
-		rel->partial_pathlist = NIL;
+		if (list_length(rel->partial_pathlist) != 0)
+		{
+			/*
+			 * Parallel scans on columnar tables are already discardad by
+			 * ColumnarGetRelationInfoHook but be on the safe side.
+			 */
+			elog(ERROR, "parallel scans on columnar are not supported");
+		}
 
 		/*
 		 * There are cases where IndexPath is normally more preferrable over
@@ -315,6 +332,30 @@ ColumnarSetRelPathlistHook(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		}
 	}
 	RelationClose(relation);
+}
+
+
+static void
+ColumnarGetRelationInfoHook(PlannerInfo *root, Oid relationObjectId,
+							bool inhparent, RelOptInfo *rel)
+{
+	if (PreviousGetRelationInfoHook)
+	{
+		PreviousGetRelationInfoHook(root, relationObjectId, inhparent, rel);
+	}
+
+	if (IsColumnarTableAmTable(relationObjectId))
+	{
+		/* disable parallel query */
+		rel->rel_parallel_workers = 0;
+
+		/* disable index-only scan */
+		IndexOptInfo *indexOptInfo = NULL;
+		foreach_ptr(indexOptInfo, rel->indexlist)
+		{
+			memset(indexOptInfo->canreturn, false, indexOptInfo->ncolumns * sizeof(bool));
+		}
+	}
 }
 
 
@@ -1060,6 +1101,29 @@ ParameterizationAsString(PlannerInfo *root, Relids paramRelids, StringInfo buf)
 
 
 /*
+ * ContainsExecParams tests whether the node contains any exec params. The
+ * signature accepts an extra argument for use with expression_tree_walker.
+ */
+static bool
+ContainsExecParams(Node *node, void *notUsed)
+{
+	if (node == NULL)
+	{
+		return false;
+	}
+	else if (IsA(node, Param))
+	{
+		Param *param = castNode(Param, node);
+		if (param->paramkind == PARAM_EXEC)
+		{
+			return true;
+		}
+	}
+	return expression_tree_walker(node, ContainsExecParams, NULL);
+}
+
+
+/*
  * Create and add a path with the given parameterization paramRelids.
  *
  * XXX: Consider refactoring to be more like postgresGetForeignPaths(). The
@@ -1092,11 +1156,8 @@ AddColumnarScanPath(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte,
 	path->param_info = get_baserel_parampathinfo(root, rel, paramRelids);
 
 	/*
-	 * Now, baserestrictinfo contains the clauses referencing only this rel,
-	 * and ppi_clauses (if present) represents the join clauses that reference
-	 * this rel and rels contained in paramRelids (after accounting for
-	 * ECs). Combine the two lists of clauses, extracting the actual clause
-	 * from the rinfo, and filtering out pseudoconstants and SAOPs.
+	 * Usable clauses for this parameterization exist in baserestrictinfo and
+	 * ppi_clauses.
 	 */
 	List *allClauses = copyObject(rel->baserestrictinfo);
 	if (path->param_info != NULL)
@@ -1104,20 +1165,47 @@ AddColumnarScanPath(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte,
 		allClauses = list_concat(allClauses, path->param_info->ppi_clauses);
 	}
 
-	/*
-	 * This is the set of clauses that can be pushed down for this
-	 * parameterization (with the given paramRelids), and will be used to
-	 * construct the CustomScan plan.
-	 */
-	List *pushdownClauses = FilterPushdownClauses(root, rel, allClauses);
+	allClauses = FilterPushdownClauses(root, rel, allClauses);
 
+	/*
+	 * Plain clauses may contain extern params, but not exec params, and can
+	 * be evaluated at init time or rescan time. Track them in another list
+	 * that is a subset of allClauses.
+	 *
+	 * Note: although typically baserestrictinfo contains plain clauses,
+	 * that's not always true. It can also contain a qual referencing a Var at
+	 * a higher query level, which can be turned into an exec param, and
+	 * therefore it won't be a plain clause.
+	 */
+	List *plainClauses = NIL;
+	ListCell *lc;
+	foreach(lc, allClauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		if (bms_is_subset(rinfo->required_relids, rel->relids) &&
+			!ContainsExecParams((Node *) rinfo->clause, NULL))
+		{
+			plainClauses = lappend(plainClauses, rinfo);
+		}
+	}
+
+	/*
+	 * We can't make our own CustomPath structure, so we need to put
+	 * everything in the custom_private list. To keep the two lists separate,
+	 * we make them sublists in a 2-element list.
+	 */
 	if (EnableColumnarQualPushdown)
 	{
-		cpath->custom_private = pushdownClauses;
+		cpath->custom_private = list_make2(copyObject(plainClauses),
+										   copyObject(allClauses));
+	}
+	else
+	{
+		cpath->custom_private = list_make2(NIL, NIL);
 	}
 
 	int numberOfColumnsRead = bms_num_members(rte->selectedCols);
-	int numberOfClausesPushed = list_length(cpath->custom_private);
+	int numberOfClausesPushed = list_length(allClauses);
 
 	CostColumnarScan(root, rel, rte->relid, cpath, numberOfColumnsRead,
 					 numberOfClausesPushed);
@@ -1147,8 +1235,9 @@ CostColumnarScan(PlannerInfo *root, RelOptInfo *rel, Oid relationId,
 {
 	Path *path = &cpath->path;
 
+	List *allClauses = lsecond(cpath->custom_private);
 	Selectivity clauseSel = clauselist_selectivity(
-		root, cpath->custom_private, rel->relid, JOIN_INNER, NULL);
+		root, allClauses, rel->relid, JOIN_INNER, NULL);
 
 	/*
 	 * We already filtered out clauses where the overall selectivity would be
@@ -1256,18 +1345,28 @@ ColumnarScanPath_PlanCustomPath(PlannerInfo *root,
 	if (EnableColumnarQualPushdown)
 	{
 		/*
-		 * List of pushed-down clauses. The Vars referencing other relations
-		 * will be changed into exec Params by create_customscan_plan().
+		 * Lists of pushed-down clauses. The Vars in custom_exprs referencing
+		 * other relations will be changed into exec Params by
+		 * create_customscan_plan().
 		 *
-		 * XXX: this just means what will be pushed into the columnar reader
-		 * code; some of these may not be usable. We should fix this by
-		 * passing down something more like ScanKeys, where we've already
-		 * verified that the operators match the btree opclass of the chunk
-		 * predicates.
+		 * Like CustomPath->custom_private, keep a list of plain clauses
+		 * separate from the list of all clauses by making them sublists of a
+		 * 2-element list.
+		 *
+		 * XXX: custom_exprs are the quals that will be pushed into the
+		 * columnar reader code; some of these may not be usable. We should
+		 * fix this by processing the quals more completely and using
+		 * ScanKeys.
 		 */
-		cscan->custom_exprs = copyObject(
-			extract_actual_clauses(best_path->custom_private,
-								   false /* no pseudoconstants */));
+		List *plainClauses = extract_actual_clauses(
+			linitial(best_path->custom_private), false /* no pseudoconstants */);
+		List *allClauses = extract_actual_clauses(
+			lsecond(best_path->custom_private), false /* no pseudoconstants */);
+		cscan->custom_exprs = copyObject(list_make2(plainClauses, allClauses));
+	}
+	else
+	{
+		cscan->custom_exprs = list_make2(NIL, NIL);
 	}
 
 	cscan->scan.plan.qual = extract_actual_clauses(
@@ -1276,6 +1375,66 @@ ColumnarScanPath_PlanCustomPath(PlannerInfo *root,
 	cscan->scan.scanrelid = best_path->path.parent->relid;
 
 	return (Plan *) cscan;
+}
+
+
+/*
+ * ReparameterizeMutator changes all varnos referencing the topmost parent of
+ * child_rel to instead reference child_rel directly.
+ */
+static Node *
+ReparameterizeMutator(Node *node, RelOptInfo *child_rel)
+{
+	if (node == NULL)
+	{
+		return NULL;
+	}
+	if (IsA(node, Var))
+	{
+		Var *var = castNode(Var, node);
+		if (bms_is_member(var->varno, child_rel->top_parent_relids))
+		{
+			var = copyObject(var);
+			var->varno = child_rel->relid;
+		}
+		return (Node *) var;
+	}
+
+	if (IsA(node, RestrictInfo))
+	{
+		RestrictInfo *rinfo = castNode(RestrictInfo, node);
+		rinfo = copyObject(rinfo);
+		rinfo->clause = (Expr *) expression_tree_mutator(
+			(Node *) rinfo->clause, ReparameterizeMutator, (void *) child_rel);
+		return (Node *) rinfo;
+	}
+	return expression_tree_mutator(node, ReparameterizeMutator,
+								   (void *) child_rel);
+}
+
+
+/*
+ * ColumnarScanPath_ReparameterizeCustomPathByChild is a method called when a
+ * path is reparameterized directly to a child relation, rather than the
+ * top-level parent.
+ *
+ * For instance, let there be a join of two partitioned columnar relations PX
+ * and PY. A path for a ColumnarScan of PY3 might be parameterized by PX so
+ * that the join qual "PY3.a = PX.a" (referencing the parent PX) can be pushed
+ * down. But if the planner decides on a partition-wise join, then the path
+ * will be reparameterized on the child table PX3 directly.
+ *
+ * When that happens, we need to update all Vars in the pushed-down quals to
+ * reference PX3, not PX, to match the new parameterization. This method
+ * notifies us that it needs to be done, and allows us to update the
+ * information in custom_private.
+ */
+static List *
+ColumnarScanPath_ReparameterizeCustomPathByChild(PlannerInfo *root,
+												 List *custom_private,
+												 RelOptInfo *child_rel)
+{
+	return (List *) ReparameterizeMutator((Node *) custom_private, child_rel);
 }
 
 
@@ -1346,10 +1505,10 @@ ColumnarScan_BeginCustomScan(CustomScanState *cscanstate, EState *estate, int ef
 	columnarScanState->css_RuntimeContext = cscanstate->ss.ps.ps_ExprContext;
 	cscanstate->ss.ps.ps_ExprContext = stdecontext;
 
-	/* XXX: separate into runtime clauses and normal clauses */
 	ResetExprContext(columnarScanState->css_RuntimeContext);
+	List *plainClauses = linitial(cscan->custom_exprs);
 	columnarScanState->qual = (List *) EvalParamsMutator(
-		(Node *) cscan->custom_exprs, columnarScanState->css_RuntimeContext);
+		(Node *) plainClauses, columnarScanState->css_RuntimeContext);
 
 	/* scan slot is already initialized */
 }
@@ -1503,8 +1662,9 @@ ColumnarScan_ReScanCustomScan(CustomScanState *node)
 	ColumnarScanState *columnarScanState = (ColumnarScanState *) node;
 
 	ResetExprContext(columnarScanState->css_RuntimeContext);
+	List *allClauses = lsecond(cscan->custom_exprs);
 	columnarScanState->qual = (List *) EvalParamsMutator(
-		(Node *) cscan->custom_exprs, columnarScanState->css_RuntimeContext);
+		(Node *) allClauses, columnarScanState->css_RuntimeContext);
 
 	TableScanDesc scanDesc = node->ss.ss_currentScanDesc;
 
@@ -1534,7 +1694,7 @@ ColumnarScan_ExplainCustomScan(CustomScanState *node, List *ancestors,
 						projectedColumnsStr, es);
 
 	CustomScan *cscan = castNode(CustomScan, node->ss.ps.plan);
-	List *chunkGroupFilter = cscan->custom_exprs;
+	List *chunkGroupFilter = lsecond(cscan->custom_exprs);
 	if (chunkGroupFilter != NULL)
 	{
 		const char *pushdownClausesStr = ColumnarPushdownClausesStr(
