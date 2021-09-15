@@ -451,7 +451,7 @@ DeleteAllReferenceTablePlacementsFromNodeGroup(int32 groupId)
 	{
 		referenceShardIntervalList = GetSortedReferenceShardIntervals(referenceTableList);
 
-		BlockWritesToShardList(referenceShardIntervalList);
+		BlockWritesToColocatedShardList(referenceShardIntervalList);
 	}
 
 	StringInfo deletePlacementCommand = makeStringInfo();
@@ -551,7 +551,7 @@ ReplicateAllReferenceTablesToNode(char *nodeName, int nodePort)
 
 		if (ClusterHasKnownMetadataWorkers())
 		{
-			BlockWritesToShardList(referenceShardIntervalList);
+			BlockWritesToColocatedShardList(referenceShardIntervalList);
 		}
 
 		ShardInterval *shardInterval = NULL;

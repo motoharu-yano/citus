@@ -366,7 +366,7 @@ citus_move_shard_placement(PG_FUNCTION_ARGS)
 	EnsureEnoughDiskSpaceForShardMove(colocatedShardList, sourceNodeName, sourceNodePort,
 									  targetNodeName, targetNodePort);
 
-	BlockWritesToShardList(colocatedShardList);
+	BlockWritesToColocatedShardList(colocatedShardList);
 
 	/*
 	 * CopyColocatedShardPlacement function copies given shard with its co-located
@@ -529,7 +529,7 @@ ErrorIfMoveUnsupportedTableType(Oid relationId)
  * list. The function assumes that all the shards in the list are colocated.
  */
 void
-BlockWritesToShardList(List *shardList)
+BlockWritesToColocatedShardList(List *shardList)
 {
 	ShardInterval *shard = NULL;
 	foreach_ptr(shard, shardList)
@@ -789,7 +789,7 @@ ReplicateColocatedShardPlacement(int64 shardId, char *sourceNodeName,
 	 */
 	colocatedShardList = SortList(colocatedShardList, CompareShardIntervalsById);
 
-	BlockWritesToShardList(colocatedShardList);
+	BlockWritesToColocatedShardList(colocatedShardList);
 
 	ShardInterval *colocatedShard = NULL;
 	foreach_ptr(colocatedShard, colocatedShardList)

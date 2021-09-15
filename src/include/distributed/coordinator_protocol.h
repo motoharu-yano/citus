@@ -303,7 +303,6 @@ extern ShardPlacement * SearchShardPlacementInListOrError(List *shardPlacementLi
 extern void ErrorIfTargetNodeIsNotSafeToMove(const char *targetNodeName, int
 											 targetNodePort);
 extern char LookupShardTransferMode(Oid shardReplicationModeOid);
-extern void BlockWritesToShardList(List *shardList);
 extern List * WorkerApplyShardDDLCommandList(List *ddlCommandList, int64 shardId);
 extern List * GetForeignConstraintCommandsToReferenceTable(ShardInterval *shardInterval);
 
