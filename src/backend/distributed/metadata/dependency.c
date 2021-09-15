@@ -37,6 +37,7 @@
 #include "distributed/metadata/dependency.h"
 #include "distributed/metadata/distobject.h"
 #include "distributed/metadata_cache.h"
+#include "distributed/tuplestore.h"
 #include "distributed/version_compat.h"
 #include "miscadmin.h"
 #include "utils/fmgroids.h"
@@ -158,6 +159,54 @@ static List * ExpandCitusSupportedTypes(ObjectAddressCollector *collector,
 										ObjectAddress target);
 static ViewDependencyNode * BuildViewDependencyGraph(Oid relationId, HTAB *nodeMap);
 static Oid GetDependingView(Form_pg_depend pg_depend);
+
+
+PG_FUNCTION_INFO_V1(citus_get_dependencies_for_object);
+
+
+/*
+ * citus_unmark_object_distributed(classid oid, objid oid, objsubid int)
+ *
+ * removes the entry for an object address from pg_dist_object. Only removes the entry if
+ * the object does not exist anymore.
+ */
+Datum
+citus_get_dependencies_for_object(PG_FUNCTION_ARGS)
+{
+	CheckCitusVersion(ERROR);
+
+	Oid classid = PG_GETARG_OID(0);
+	Oid objid = PG_GETARG_OID(1);
+	int32 objsubid = PG_GETARG_INT32(2);
+
+	TupleDesc tupleDescriptor = NULL;
+	Tuplestorestate *tupleStore = SetupTuplestore(fcinfo, &tupleDescriptor);
+
+	ObjectAddress address = { 0 };
+	ObjectAddressSubSet(address, classid, objid, objsubid);
+
+	List *dependencies = GetDependenciesForObject(&address);
+	ObjectAddress *dependency = NULL;
+	foreach_ptr(dependency, dependencies)
+	{
+		Datum values[3];
+		bool isNulls[3];
+
+		memset(values, 0, sizeof(values));
+		memset(isNulls, 0, sizeof(isNulls));
+
+		values[0] = ObjectIdGetDatum(dependency->classId);
+		values[1] = ObjectIdGetDatum(dependency->objectId);
+		values[2] = Int32GetDatum(dependency->objectSubId);
+
+		tuplestore_putvalues(tupleStore, tupleDescriptor, values, isNulls);
+	}
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupleStore);
+
+	PG_RETURN_VOID();
+}
 
 
 /*
