@@ -93,42 +93,6 @@ SELECT create_distributed_table('distributed_table', 'a');
 -- cannot create citus local table from an existing citus table
 SELECT citus_add_local_table_to_metadata('distributed_table');
 
--- partitioned table tests --
-
-CREATE TABLE partitioned_table(a int, b int) PARTITION BY RANGE (a);
-CREATE TABLE partitioned_table_1 PARTITION OF partitioned_table FOR VALUES FROM (0) TO (10);
-CREATE TABLE partitioned_table_2 PARTITION OF partitioned_table FOR VALUES FROM (10) TO (20);
-
--- cannot create partitioned citus local tables
-SELECT citus_add_local_table_to_metadata('partitioned_table');
-
-BEGIN;
-  CREATE TABLE citus_local_table PARTITION OF partitioned_table FOR VALUES FROM (20) TO (30);
-
-  -- cannot create citus local table as a partition of a local table
-  SELECT citus_add_local_table_to_metadata('citus_local_table');
-ROLLBACK;
-
-BEGIN;
-  CREATE TABLE citus_local_table (a int, b int);
-
-  SELECT citus_add_local_table_to_metadata('citus_local_table');
-
-  -- cannot create citus local table as a partition of a local table
-  -- via ALTER TABLE commands as well
-  ALTER TABLE partitioned_table ATTACH PARTITION citus_local_table FOR VALUES FROM (20) TO (30);
-ROLLBACK;
-
-BEGIN;
-  SELECT create_distributed_table('partitioned_table', 'a');
-
-  CREATE TABLE citus_local_table (a int, b int);
-  SELECT citus_add_local_table_to_metadata('citus_local_table');
-
-  -- cannot attach citus local table to a partitioned distributed table
-  ALTER TABLE partitioned_table ATTACH PARTITION citus_local_table FOR VALUES FROM (20) TO (30);
-ROLLBACK;
-
 -- show that we do not support inheritance relationships --
 
 CREATE TABLE parent_table (a int, b text);
@@ -539,5 +503,59 @@ TRUNCATE referenced_table CASCADE;
 RESET client_min_messages;
 \set VERBOSITY terse
 
+-- test for partitioned tables
+SET client_min_messages TO ERROR;
+-- verify we can convert partitioned tables into Citus Local Tables
+CREATE TABLE partitioned (user_id int, time timestamp with time zone, data jsonb, PRIMARY KEY (user_id, time )) PARTITION BY RANGE ("time");
+CREATE TABLE partition1 PARTITION OF partitioned FOR VALUES FROM ('2018-04-13 00:00:00+00') TO ('2018-04-14 00:00:00+00');
+CREATE TABLE partition2 PARTITION OF partitioned FOR VALUES FROM ('2018-04-14 00:00:00+00') TO ('2018-04-15 00:00:00+00');
+SELECT citus_add_local_table_to_metadata('partitioned');
+-- partitions added after the conversion get converted into CLT as well
+CREATE TABLE partition3 PARTITION OF partitioned FOR VALUES FROM ('2018-04-15 00:00:00+00') TO ('2018-04-16 00:00:00+00');
+SELECT
+    nmsp_parent.nspname AS parent_schema,
+    parent.relname      AS parent,
+    nmsp_child.nspname  AS child_schema,
+    child.relname       AS child
+FROM pg_inherits
+    JOIN pg_class parent            ON pg_inherits.inhparent = parent.oid
+    JOIN pg_class child             ON pg_inherits.inhrelid   = child.oid
+    JOIN pg_namespace nmsp_parent   ON nmsp_parent.oid  = parent.relnamespace
+    JOIN pg_namespace nmsp_child    ON nmsp_child.oid   = child.relnamespace
+WHERE parent.relname LIKE '%partition%'
+ORDER BY child;
+-- undistribute succesfully
+SELECT undistribute_table('partitioned');
+
+-- verify table is undistributed
+SELECT relname FROM pg_class WHERE relname LIKE 'partition3%' ORDER BY relname;
+
+-- drop successfully
+DROP TABLE partitioned;
+
+-- test creating distributed tables from partitioned citus local tables
+CREATE TABLE partitioned_distributed (a INT UNIQUE) PARTITION BY RANGE(a);
+CREATE TABLE partitioned_distributed_1 PARTITION OF partitioned_distributed FOR VALUES FROM (1) TO (4);
+CREATE TABLE partitioned_distributed_2 PARTITION OF partitioned_distributed FOR VALUES FROM (5) TO (8);
+SELECT citus_add_local_table_to_metadata('partitioned_distributed');
+SELECT create_distributed_table('partitioned_distributed','a');
+
+\c - - - :worker_1_port
+SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_distributed%' ORDER BY relname;
+\c - - - :master_port
+
+-- verify that mx nodes have the shell table
+SET search_path TO citus_local_tables_test_schema;
+CREATE TABLE partitioned_mx (a INT UNIQUE) PARTITION BY RANGE(a);
+CREATE TABLE partitioned_mx_1 PARTITION OF partitioned_mx FOR VALUES FROM (1) TO (4);
+CREATE TABLE partitioned_mx_2 PARTITION OF partitioned_mx FOR VALUES FROM (5) TO (8);
+SELECT citus_add_local_table_to_metadata('partitioned_mx');
+SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
+
+\c - - - :worker_1_port
+SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relname;
+\c - - - :master_port
+SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
 -- cleanup at exit
+SET client_min_messages TO ERROR;
 DROP SCHEMA citus_local_tables_test_schema, "CiTUS!LocalTables", "test_\'index_schema" CASCADE;
