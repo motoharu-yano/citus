@@ -363,7 +363,10 @@ PostprocessCreateTableStmtPartitionOf(CreateStmt *createStatement, const
 			 * We can do create a Citus Local Table with current table and early return.
 			 */
 			char *attachCommand = GenerateAlterTableAttachPartitionCommand(relationId);
-			ExecuteAndLogUtilityCommand(GenerateDetachPartitionCommand(relationId));
+			List *detachCommands = list_make3(DISABLE_DDL_PROPAGATION,
+											  GenerateDetachPartitionCommand(relationId),
+											  ENABLE_DDL_PROPAGATION);
+			ExecuteAndLogUtilityCommandList(detachCommands);
 			CreateCitusLocalTable(relationId, false);
 			ExecuteAndLogUtilityCommand(attachCommand);
 

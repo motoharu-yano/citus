@@ -373,7 +373,6 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 											  relationId));
 	}
 
-	ErrorIfAnyPartitionRelationInvolvedInNonInheritedFKey(partitionList);
 	List *partitionListWithParent = lappend_oid(partitionList, parentOid);
 	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
 	List *fKeyCreationCommands =
