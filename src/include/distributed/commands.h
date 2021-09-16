@@ -521,6 +521,7 @@ extern void CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE relLo
 												  cascadeOperationType);
 extern void ErrorIfAnyPartitionRelationInvolvedInNonInheritedFKey(List *relationIdList);
 extern bool RelationIdListHasReferenceTable(List *relationIdList);
+extern List * GetFKeyCreationCommandsForRelationIdList(List *relationIdList);
 extern void DropRelationForeignKeys(Oid relationId, int flags);
 extern void SetLocalEnableLocalReferenceForeignKeys(bool state);
 extern void ExecuteAndLogUtilityCommandList(List *ddlCommandList);

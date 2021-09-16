@@ -35,7 +35,6 @@
 static void EnsureSequentialModeForCitusTableCascadeFunction(List *relationIdList);
 static void LockRelationsWithLockMode(List *relationIdList, LOCKMODE lockMode);
 static List * RemovePartitionRelationIds(List *relationIdList);
-static List * GetFKeyCreationCommandsForRelationIdList(List *relationIdList);
 static void DropRelationIdListForeignKeys(List *relationIdList, int fKeyFlags);
 static List * GetRelationDropFkeyCommands(Oid relationId, int fKeyFlags);
 static char * GetDropFkeyCascadeCommand(Oid foreignKeyId);
@@ -247,7 +246,7 @@ RelationIdListHasReferenceTable(List *relationIdList)
  * GetFKeyCreationCommandsForRelationIdList returns a list of DDL commands to
  * create foreign keys for each relation in relationIdList.
  */
-static List *
+List *
 GetFKeyCreationCommandsForRelationIdList(List *relationIdList)
 {
 	List *fKeyCreationCommands = NIL;

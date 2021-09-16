@@ -78,10 +78,6 @@ static List * GetRelationIdListFromRangeVarList(List *rangeVarList, LOCKMODE loc
 static bool AlterTableCommandTypeIsTrigger(AlterTableType alterTableType);
 static bool AlterTableDropsForeignKey(AlterTableStmt *alterTableStatement);
 static void ErrorIfUnsupportedAlterTableStmt(AlterTableStmt *alterTableStatement);
-static void ErrorIfCitusLocalTablePartitionCommand(AlterTableCmd *alterTableCmd,
-												   Oid parentRelationId);
-static Oid GetPartitionCommandChildRelationId(AlterTableCmd *alterTableCmd,
-											  bool missingOk);
 static List * InterShardDDLTaskList(Oid leftRelationId, Oid rightRelationId,
 									const char *commandString);
 static bool AlterInvolvesPartitionColumn(AlterTableStmt *alterTableStatement,
@@ -360,6 +356,20 @@ PostprocessCreateTableStmtPartitionOf(CreateStmt *createStatement, const
 	 */
 	if (IsCitusTable(parentRelationId))
 	{
+		if (IsCitusTableType(parentRelationId, CITUS_LOCAL_TABLE))
+		{
+			/*
+			 * If the parent is a citus local table, we don't need distribution column.
+			 * We can do create a Citus Local Table with current table and early return.
+			 */
+			char *attachCommand = GenerateAlterTableAttachPartitionCommand(relationId);
+			ExecuteAndLogUtilityCommand(GenerateDetachPartitionCommand(relationId));
+			CreateCitusLocalTable(relationId, false);
+			ExecuteAndLogUtilityCommand(attachCommand);
+
+			return;
+		}
+
 		Var *parentDistributionColumn = DistPartitionKeyOrError(parentRelationId);
 		char parentDistributionMethod = DISTRIBUTE_BY_HASH;
 		char *parentRelationName = generate_qualified_relation_name(parentRelationId);
@@ -2477,7 +2487,16 @@ ErrorIfUnsupportedAlterTableStmt(AlterTableStmt *alterTableStatement)
 											"separately.")));
 				}
 
-				ErrorIfCitusLocalTablePartitionCommand(command, relationId);
+				if (IsCitusTableType(partitionRelationId, CITUS_LOCAL_TABLE) &&
+					IsCitusTableType(relationId, CITUS_LOCAL_TABLE))
+				{
+					/*
+					 * Citus Local Tables cannot be colocated with other tables.
+					 * If both the parent and child tables are Citus Local Tables,
+					 * we don't need to check colocation.
+					 */
+					break;
+				}
 
 				if (IsCitusTable(partitionRelationId) &&
 					!TablesColocated(relationId, partitionRelationId))
@@ -2521,7 +2540,6 @@ ErrorIfUnsupportedAlterTableStmt(AlterTableStmt *alterTableStatement)
 										   "unsupported.")));
 				}
 				#endif
-				ErrorIfCitusLocalTablePartitionCommand(command, relationId);
 
 				break;
 			}
@@ -2593,52 +2611,6 @@ ErrorIfUnsupportedAlterTableStmt(AlterTableStmt *alterTableStatement)
 			}
 		}
 	}
-}
-
-
-/*
- * ErrorIfCitusLocalTablePartitionCommand errors out if given alter table subcommand is
- * an ALTER TABLE ATTACH / DETACH PARTITION command run for a citus local table.
- */
-static void
-ErrorIfCitusLocalTablePartitionCommand(AlterTableCmd *alterTableCmd, Oid parentRelationId)
-{
-	AlterTableType alterTableType = alterTableCmd->subtype;
-	if (alterTableType != AT_AttachPartition && alterTableType != AT_DetachPartition)
-	{
-		return;
-	}
-
-	bool missingOK = false;
-	Oid childRelationId = GetPartitionCommandChildRelationId(alterTableCmd, missingOK);
-	if (!IsCitusTableType(parentRelationId, CITUS_LOCAL_TABLE) &&
-		!IsCitusTableType(childRelationId, CITUS_LOCAL_TABLE))
-	{
-		return;
-	}
-
-	ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("cannot execute ATTACH/DETACH PARTITION command as "
-						   "local tables added to metadata cannot be involved in "
-						   "partition relationships with other tables")));
-}
-
-
-/*
- * GetPartitionCommandChildRelationId returns child relationId for given
- * ALTER TABLE ATTACH / DETACH PARTITION subcommand.
- */
-static Oid
-GetPartitionCommandChildRelationId(AlterTableCmd *alterTableCmd, bool missingOk)
-{
-	AlterTableType alterTableType PG_USED_FOR_ASSERTS_ONLY = alterTableCmd->subtype;
-	Assert(alterTableType == AT_AttachPartition || alterTableType == AT_DetachPartition);
-
-	PartitionCmd *partitionCommand = (PartitionCmd *) alterTableCmd->def;
-	RangeVar *childRelationRangeVar = partitionCommand->name;
-	Oid childRelationId = RangeVarGetRelid(childRelationRangeVar, AccessExclusiveLock,
-										   missingOk);
-	return childRelationId;
 }
 
 

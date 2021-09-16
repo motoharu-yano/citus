@@ -47,6 +47,7 @@
 
 static void citus_add_local_table_to_metadata_internal(Oid relationId,
 													   bool cascadeViaForeignKeys);
+static void CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys);
 static void ErrorIfUnsupportedCreateCitusLocalTable(Relation relation);
 static void ErrorIfUnsupportedCitusLocalTableKind(Oid relationId);
 static void ErrorIfUnsupportedCitusLocalColumnDefinition(Relation relation);
@@ -126,6 +127,28 @@ citus_add_local_table_to_metadata_internal(Oid relationId, bool cascadeViaForeig
 						  errhint("Consider setting "
 								  "citus.enable_local_reference_table_foreign_keys "
 								  "to 'off' to disable this behavior")));
+	}
+
+	/*
+	 * If the relation is a partition, we need to convert all the partitioned table
+	 * to Citus Local Table. To do that, we call CreateCitusLocalTable with the parent
+	 * relation, instead of the child, since this will cause the parent and all the
+	 * partition child tables to become a Citus Local Table.
+	 */
+	if (PartitionTable(relationId))
+	{
+		Oid parentOid = PartitionParentOid(relationId);
+		if (OidIsValid(parentOid) && !IsCitusTable(parentOid))
+		{
+			CreatePartitionedCitusLocalTable(parentOid, cascadeViaForeignKeys);
+			return;
+		}
+	}
+
+	if (PartitionedTable(relationId))
+	{
+		CreatePartitionedCitusLocalTable(relationId, cascadeViaForeignKeys);
+		return;
 	}
 
 	CreateCitusLocalTable(relationId, cascadeViaForeignKeys);
@@ -333,6 +356,45 @@ CreateCitusLocalTable(Oid relationId, bool cascadeViaForeignKeys)
 }
 
 
+static void
+CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
+{
+	Assert(PartitionedTable(parentOid));
+	List *partitionList = PartitionList(parentOid);
+	List *detachPartitionCommands = NIL;
+	List *attachPartitionCommands = NIL;
+	Oid relationId = InvalidOid;
+	foreach_oid(relationId, partitionList)
+	{
+		detachPartitionCommands = lappend(detachPartitionCommands,
+										  GenerateDetachPartitionCommand(relationId));
+		attachPartitionCommands = lappend(attachPartitionCommands,
+										  GenerateAlterTableAttachPartitionCommand(
+											  relationId));
+	}
+
+	ErrorIfAnyPartitionRelationInvolvedInNonInheritedFKey(partitionList);
+	List *partitionListWithParent = lappend_oid(partitionList, parentOid);
+	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
+	List *fKeyCreationCommands =
+		GetFKeyCreationCommandsForRelationIdList(partitionListWithParent);
+
+	foreach_oid(relationId, partitionListWithParent)
+	{
+		LockRelationOid(relationId, AccessExclusiveLock);
+		DropRelationForeignKeys(relationId, fKeyFlags);
+	}
+
+	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
+	foreach_oid(relationId, partitionListWithParent)
+	{
+		CreateCitusLocalTable(relationId, false);
+	}
+	ExecuteAndLogUtilityCommandList(attachPartitionCommands);
+	ExecuteAndLogUtilityCommandList(fKeyCreationCommands);
+}
+
+
 /*
  * ErrorIfUnsupportedCreateCitusLocalTable errors out if we cannot create the
  * citus local table from the relation.
@@ -387,20 +449,13 @@ ErrorIfUnsupportedCitusLocalTableKind(Oid relationId)
 							   "relationships", relationName)));
 	}
 
-	if (PartitionTable(relationId))
-	{
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("cannot add local table \"%s\" to metadata, local tables "
-							   "added to metadata cannot be partition of other tables ",
-							   relationName)));
-	}
-
 	char relationKind = get_rel_relkind(relationId);
-	if (!(relationKind == RELKIND_RELATION || relationKind == RELKIND_FOREIGN_TABLE))
+	if (!(relationKind == RELKIND_RELATION || relationKind == RELKIND_FOREIGN_TABLE ||
+		  relationKind == RELKIND_PARTITIONED_TABLE))
 	{
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("cannot add local table \"%s\" to metadata, only regular "
-							   "tables and foreign tables can be added to citus metadata ",
+							   "tables, partitioned tables and foreign tables can be added to citus metadata ",
 							   relationName)));
 	}
 
