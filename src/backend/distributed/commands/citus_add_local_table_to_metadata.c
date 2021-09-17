@@ -47,7 +47,6 @@
 
 static void citus_add_local_table_to_metadata_internal(Oid relationId,
 													   bool cascadeViaForeignKeys);
-static void CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys);
 static void ErrorIfUnsupportedCreateCitusLocalTable(Relation relation);
 static void ErrorIfUnsupportedCitusLocalTableKind(Oid relationId);
 static void ErrorIfUnsupportedCitusLocalColumnDefinition(Relation relation);
@@ -140,14 +139,14 @@ citus_add_local_table_to_metadata_internal(Oid relationId, bool cascadeViaForeig
 		Oid parentOid = PartitionParentOid(relationId);
 		if (OidIsValid(parentOid) && !IsCitusTable(parentOid))
 		{
-			CreatePartitionedCitusLocalTable(parentOid, cascadeViaForeignKeys);
+			CreatePartitionedCitusLocalTable(parentOid);
 			return;
 		}
 	}
 
 	if (PartitionedTable(relationId))
 	{
-		CreatePartitionedCitusLocalTable(relationId, cascadeViaForeignKeys);
+		CreatePartitionedCitusLocalTable(relationId);
 		return;
 	}
 
@@ -356,8 +355,8 @@ CreateCitusLocalTable(Oid relationId, bool cascadeViaForeignKeys)
 }
 
 
-static void
-CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
+void
+CreatePartitionedCitusLocalTable(Oid parentOid)
 {
 	Assert(PartitionedTable(parentOid));
 	List *partitionList = PartitionList(parentOid);

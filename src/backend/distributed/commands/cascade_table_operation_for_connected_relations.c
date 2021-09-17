@@ -412,7 +412,19 @@ ExecuteCascadeOperationForRelationIdList(List *relationIdList,
 			{
 				if (!IsCitusTable(relationId))
 				{
-					CreateCitusLocalTable(relationId, cascadeViaForeignKeys);
+					if (PartitionedTable(relationId))
+					{
+						CreatePartitionedCitusLocalTable(relationId);
+					}
+					else if (PartitionTable(relationId))
+					{
+						Oid parentOid = PartitionParentOid(relationId);
+						CreatePartitionedCitusLocalTable(parentOid);
+					}
+					else
+					{
+						CreateCitusLocalTable(relationId, cascadeViaForeignKeys);
+					}
 				}
 
 				break;
