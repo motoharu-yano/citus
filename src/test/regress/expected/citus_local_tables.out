@@ -890,8 +890,10 @@ SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relna
  partitioned_mx_1_a_key
  partitioned_mx_2
  partitioned_mx_2_a_key
+ partitioned_mx_3
+ partitioned_mx_3_a_key
  partitioned_mx_a_key
-(6 rows)
+(8 rows)
 
 \c - - - :master_port
 SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);

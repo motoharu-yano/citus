@@ -551,6 +551,7 @@ CREATE TABLE partitioned_mx_1 PARTITION OF partitioned_mx FOR VALUES FROM (1) TO
 CREATE TABLE partitioned_mx_2 PARTITION OF partitioned_mx FOR VALUES FROM (5) TO (8);
 SELECT citus_add_local_table_to_metadata('partitioned_mx');
 SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
+CREATE TABLE partitioned_mx_3 PARTITION OF partitioned_mx FOR VALUES FROM (9) TO (12);
 
 \c - - - :worker_1_port
 SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relname;
