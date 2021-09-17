@@ -881,6 +881,7 @@ SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
 
 (1 row)
 
+CREATE TABLE partitioned_mx_3 PARTITION OF partitioned_mx FOR VALUES FROM (9) TO (12);
 \c - - - :worker_1_port
 SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relname;
         relname
