@@ -129,20 +129,14 @@ citus_add_local_table_to_metadata_internal(Oid relationId, bool cascadeViaForeig
 								  "to 'off' to disable this behavior")));
 	}
 
-	/*
-	 * If the relation is a partition, we need to convert all the partitioned table
-	 * to Citus Local Table. To do that, we call CreateCitusLocalTable with the parent
-	 * relation, instead of the child, since this will cause the parent and all the
-	 * partition child tables to become a Citus Local Table.
-	 */
 	if (PartitionTable(relationId))
 	{
-		Oid parentOid = PartitionParentOid(relationId);
-		if (OidIsValid(parentOid) && !IsCitusTable(parentOid))
-		{
-			CreatePartitionedCitusLocalTable(parentOid, cascadeViaForeignKeys);
-			return;
-		}
+		Oid parentRelationId = PartitionParentOid(relationId);
+		char *parentRelationName = get_rel_name(parentRelationId);
+		ereport(ERROR, (errmsg("cannot convert the table because "
+							   "it is a partition"),
+						errhint("the parent table is \"%s\"",
+								parentRelationName)));
 	}
 
 	if (PartitionedTable(relationId))
@@ -376,38 +370,15 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 											  relationId));
 	}
 
-	List *partitionListWithParent = lappend_oid(partitionList, parentOid);
-	List *connectedRelationList = list_copy(partitionListWithParent);
-
-	if (cascadeViaForeignKeys)
-	{
-		foreach_oid(relationId, partitionListWithParent)
-		{
-			connectedRelationList =
-				list_concat_unique(connectedRelationList,
-								   GetForeignKeyConnectedRelationIdList(relationId));
-		}
-	}
-
-	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
-	foreach_oid(relationId, connectedRelationList)
-	{
-		LockRelationOid(relationId, AccessExclusiveLock);
-		DropRelationForeignKeys(relationId, fKeyFlags);
-	}
-
-	List *fKeyCreationCommands =
-		GetFKeyCreationCommandsForRelationIdList(connectedRelationList);
+	CreateCitusLocalTable(parentOid, cascadeViaForeignKeys);
 
 	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
 
-	foreach_oid(relationId, connectedRelationList)
+	foreach_oid(relationId, partitionList)
 	{
 		CreateCitusLocalTable(relationId, false);
 	}
 	ExecuteAndLogUtilityCommandList(attachPartitionCommands);
-	bool skip_validation = true;
-	ExecuteForeignKeyCreateCommandList(fKeyCreationCommands, skip_validation);
 }
 
 

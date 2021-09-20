@@ -557,6 +557,21 @@ CREATE TABLE partitioned_mx_3 PARTITION OF partitioned_mx FOR VALUES FROM (9) TO
 SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relname;
 \c - - - :master_port
 SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
+-- test cascading via foreign keys
+CREATE TABLE cas_1 (a INT UNIQUE);
+CREATE TABLE cas_par (a INT UNIQUE) PARTITION BY RANGE(a);
+CREATE TABLE cas_par_1 PARTITION OF cas_par FOR VALUES FROM (1) TO (4);
+CREATE TABLE cas_par_2 PARTITION OF cas_par FOR VALUES FROM (5) TO (8);
+ALTER TABLE cas_par_1 ADD CONSTRAINT fkey_cas_test_1 FOREIGN KEY (a) REFERENCES cas_1(a);
+CREATE TABLE cas_par2 (a INT UNIQUE) PARTITION BY RANGE(a);
+CREATE TABLE cas_par2_1 PARTITION OF cas_par2 FOR VALUES FROM (1) TO (4);
+CREATE TABLE cas_par2_2 PARTITION OF cas_par2 FOR VALUES FROM (5) TO (8);
+ALTER TABLE cas_par2_1 ADD CONSTRAINT fkey_cas_test_2 FOREIGN KEY (a) REFERENCES cas_1(a);
+-- this should error out as cascade_via_foreign_keys is not set to true
+SELECT citus_add_local_table_to_metadata('cas_par2_2');
+-- this should work
+SELECT citus_add_local_table_to_metadata('cas_par2_2', cascade_via_foreign_keys=>true);
+SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
 -- cleanup at exit
 SET client_min_messages TO ERROR;
 DROP SCHEMA citus_local_tables_test_schema, "CiTUS!LocalTables", "test_\'index_schema" CASCADE;
