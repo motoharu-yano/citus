@@ -30,6 +30,7 @@
 #include "distributed/commands.h"
 #include "distributed/commands/sequence.h"
 #include "distributed/commands/utility_hook.h"
+#include "distributed/foreign_key_relationship.h"
 #include "distributed/listutils.h"
 #include "distributed/local_executor.h"
 #include "distributed/metadata_sync.h"
@@ -139,14 +140,14 @@ citus_add_local_table_to_metadata_internal(Oid relationId, bool cascadeViaForeig
 		Oid parentOid = PartitionParentOid(relationId);
 		if (OidIsValid(parentOid) && !IsCitusTable(parentOid))
 		{
-			CreatePartitionedCitusLocalTable(parentOid);
+			CreatePartitionedCitusLocalTable(parentOid, cascadeViaForeignKeys);
 			return;
 		}
 	}
 
 	if (PartitionedTable(relationId))
 	{
-		CreatePartitionedCitusLocalTable(relationId);
+		CreatePartitionedCitusLocalTable(relationId, cascadeViaForeignKeys);
 		return;
 	}
 
@@ -356,12 +357,16 @@ CreateCitusLocalTable(Oid relationId, bool cascadeViaForeignKeys)
 
 
 void
-CreatePartitionedCitusLocalTable(Oid parentOid)
+CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 {
+	/* this function should be called with the parent table */
 	Assert(PartitionedTable(parentOid));
+
 	List *partitionList = PartitionList(parentOid);
 	List *detachPartitionCommands = NIL;
 	List *attachPartitionCommands = NIL;
+	List *connectedRelationList = NIL;
+
 	Oid relationId = InvalidOid;
 	foreach_oid(relationId, partitionList)
 	{
@@ -373,23 +378,37 @@ CreatePartitionedCitusLocalTable(Oid parentOid)
 	}
 
 	List *partitionListWithParent = lappend_oid(partitionList, parentOid);
-	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
-	List *fKeyCreationCommands =
-		GetFKeyCreationCommandsForRelationIdList(partitionListWithParent);
+	connectedRelationList = list_copy(partitionListWithParent);
 
-	foreach_oid(relationId, partitionListWithParent)
+	if (cascadeViaForeignKeys)
+	{
+		foreach_oid(relationId, partitionListWithParent)
+		{
+			connectedRelationList =
+				list_concat_unique(connectedRelationList,
+								   GetForeignKeyConnectedRelationIdList(relationId));
+		}
+	}
+
+	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
+	foreach_oid(relationId, connectedRelationList)
 	{
 		LockRelationOid(relationId, AccessExclusiveLock);
 		DropRelationForeignKeys(relationId, fKeyFlags);
 	}
 
+	List *fKeyCreationCommands =
+		GetFKeyCreationCommandsForRelationIdList(connectedRelationList);
+
 	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
-	foreach_oid(relationId, partitionListWithParent)
+
+	foreach_oid(relationId, connectedRelationList)
 	{
 		CreateCitusLocalTable(relationId, false);
 	}
 	ExecuteAndLogUtilityCommandList(attachPartitionCommands);
-	ExecuteAndLogUtilityCommandList(fKeyCreationCommands);
+	bool skip_validation = true;
+	ExecuteForeignKeyCreateCommandList(fKeyCreationCommands, skip_validation);
 }
 
 
