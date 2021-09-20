@@ -35,6 +35,7 @@
 static void EnsureSequentialModeForCitusTableCascadeFunction(List *relationIdList);
 static void LockRelationsWithLockMode(List *relationIdList, LOCKMODE lockMode);
 static List * RemovePartitionRelationIds(List *relationIdList);
+static List * GetPartitionRelationIds(List *relationIdList);
 static List * GetFKeyCreationCommandsForRelationIdList(List *relationIdList);
 static void DropRelationIdListForeignKeys(List *relationIdList, int fKeyFlags);
 static List * GetRelationDropFkeyCommands(Oid relationId, int fKeyFlags);
@@ -90,12 +91,32 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	List *nonPartitionRelationIdList =
 		RemovePartitionRelationIds(fKeyConnectedRelationIdList);
 
+	List *partitonRelationList = GetPartitionRelationIds(fKeyConnectedRelationIdList);
+
+
+	List *detachPartitionCommands = NIL;
+	List *attachPartitionCommands = NIL;
+
+	Oid partitionRelationId = InvalidOid;
+	foreach_oid(partitionRelationId, partitonRelationList)
+	{
+		detachPartitionCommands =
+			lappend(detachPartitionCommands,
+					GenerateDetachPartitionCommand(partitionRelationId));
+		attachPartitionCommands =
+			lappend(attachPartitionCommands,
+					GenerateAlterTableAttachPartitionCommand(partitionRelationId));
+	}
+
+
 	/*
 	 * Our foreign key subgraph can have distributed tables which might already
 	 * be modified in current transaction. So switch to sequential execution
 	 * before executing any ddl's to prevent erroring out later in this function.
 	 */
 	EnsureSequentialModeForCitusTableCascadeFunction(nonPartitionRelationIdList);
+
+	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
 
 	/* store foreign key creation commands before dropping them */
 	List *fKeyCreationCommands =
@@ -107,6 +128,11 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	 * relations' referencing foreign keys.
 	 */
 	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
+
+
+
+
+
 	DropRelationIdListForeignKeys(nonPartitionRelationIdList, fKeyFlags);
 	ExecuteCascadeOperationForRelationIdList(nonPartitionRelationIdList,
 											 cascadeOperationType);
@@ -114,6 +140,8 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	/* now recreate foreign keys on tables */
 	bool skip_validation = true;
 	ExecuteForeignKeyCreateCommandList(fKeyCreationCommands, skip_validation);
+
+	ExecuteAndLogUtilityCommandList(attachPartitionCommands);
 }
 
 
@@ -188,6 +216,29 @@ RemovePartitionRelationIds(List *relationIdList)
 	}
 
 	return nonPartitionRelationIdList;
+}
+
+
+/*
+ * RemovePartitionRelationIds returns a list of relation id's by removing
+ * partition relation id's from given relationIdList.
+ */
+static List *
+GetPartitionRelationIds(List *relationIdList)
+{
+	List *partitionRelationIdList = NIL;
+
+	Oid relationId = InvalidOid;
+	foreach_oid(relationId, relationIdList)
+	{
+		if (PartitionTable(relationId))
+		{
+			partitionRelationIdList = lappend_oid(partitionRelationIdList, relationId);
+		}
+
+	}
+
+	return partitionRelationIdList;
 }
 
 
