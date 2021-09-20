@@ -370,9 +370,9 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 											  relationId));
 	}
 
-	CreateCitusLocalTable(parentOid, cascadeViaForeignKeys);
-
 	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
+
+	CreateCitusLocalTable(parentOid, cascadeViaForeignKeys);
 
 	foreach_oid(relationId, partitionList)
 	{
