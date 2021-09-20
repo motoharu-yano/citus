@@ -365,7 +365,6 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 	List *partitionList = PartitionList(parentOid);
 	List *detachPartitionCommands = NIL;
 	List *attachPartitionCommands = NIL;
-	List *connectedRelationList = NIL;
 
 	Oid relationId = InvalidOid;
 	foreach_oid(relationId, partitionList)
@@ -378,7 +377,7 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 	}
 
 	List *partitionListWithParent = lappend_oid(partitionList, parentOid);
-	connectedRelationList = list_copy(partitionListWithParent);
+	List *connectedRelationList = list_copy(partitionListWithParent);
 
 	if (cascadeViaForeignKeys)
 	{
