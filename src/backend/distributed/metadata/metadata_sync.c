@@ -1716,15 +1716,9 @@ DetachPartitionCommandList(void)
 		}
 
 		List *partitionList = PartitionList(cacheEntry->relationId);
-		Oid partitionRelationId = InvalidOid;
-		foreach_oid(partitionRelationId, partitionList)
-		{
-			char *detachPartitionCommand =
-				GenerateDetachPartitionCommand(partitionRelationId);
-
-			detachPartitionCommandList = lappend(detachPartitionCommandList,
-												 detachPartitionCommand);
-		}
+		detachPartitionCommandList =
+			list_concat(detachPartitionCommandList,
+						GenerateDetachPartitionCommandRelationIdList(partitionList));
 	}
 
 	if (list_length(detachPartitionCommandList) == 0)

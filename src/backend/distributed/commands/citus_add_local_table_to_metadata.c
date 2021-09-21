@@ -378,23 +378,15 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 	}
 
 	List *partitionList = PartitionList(parentOid);
-	List *detachPartitionCommands = NIL;
-	List *attachPartitionCommands = NIL;
-
-	Oid relationId = InvalidOid;
-	foreach_oid(relationId, partitionList)
-	{
-		/* generate attach+detach commands here, to execute later */
-		detachPartitionCommands = lappend(detachPartitionCommands,
-										  GenerateDetachPartitionCommand(relationId));
-		attachPartitionCommands = lappend(attachPartitionCommands,
-										  GenerateAlterTableAttachPartitionCommand(
-											  relationId));
-	}
+	List *detachPartitionCommands =
+		GenerateDetachPartitionCommandRelationIdList(partitionList);
+	List *attachPartitionCommands =
+		GenerateAttachPartitionCommandRelationIdList(partitionList);
 
 	List *fkeyCreationCommands = GetFKeyCreationCommandsForRelationIdList(partitionList);
 
 	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
+	Oid relationId = InvalidOid;
 	foreach_oid(relationId, partitionList)
 	{
 		DropRelationForeignKeys(relationId, fKeyFlags);

@@ -83,23 +83,15 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	ErrorIfAnyPartitionRelationInvolvedInNonInheritedFKey(fKeyConnectedRelationIdList);
 
 	List *partitonRelationList = GetPartitionRelationIds(fKeyConnectedRelationIdList);
-	List *detachPartitionCommands = NIL;
-	List *attachPartitionCommands = NIL;
 
 	/*
 	 * Here we generate detach/attach commands, if there are any partition tables
 	 * in our "relations-to-cascade" list.
 	 */
-	Oid partitionRelationId = InvalidOid;
-	foreach_oid(partitionRelationId, partitonRelationList)
-	{
-		detachPartitionCommands =
-			lappend(detachPartitionCommands,
-					GenerateDetachPartitionCommand(partitionRelationId));
-		attachPartitionCommands =
-			lappend(attachPartitionCommands,
-					GenerateAlterTableAttachPartitionCommand(partitionRelationId));
-	}
+	List *detachPartitionCommands =
+		GenerateDetachPartitionCommandRelationIdList(partitonRelationList);
+	List *attachPartitionCommands =
+		GenerateAttachPartitionCommandRelationIdList(partitonRelationList);
 
 	/*
 	 * Our foreign key subgraph can have distributed tables which might already
