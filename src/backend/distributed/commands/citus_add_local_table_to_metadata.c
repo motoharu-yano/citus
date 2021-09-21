@@ -356,6 +356,14 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 	/* this function should be called with the parent table */
 	Assert(PartitionedTable(parentOid));
 
+	bool willCascade = TableHasExternalForeignKeys(parentOid) && cascadeViaForeignKeys;
+
+	if (willCascade)
+	{
+		CreateCitusLocalTable(parentOid, cascadeViaForeignKeys);
+		return;
+	}
+
 	List *partitionList = PartitionList(parentOid);
 	List *detachPartitionCommands = NIL;
 	List *attachPartitionCommands = NIL;
@@ -370,6 +378,14 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 											  relationId));
 	}
 
+	List *fkeyCreationCommands = GetFKeyCreationCommandsForRelationIdList(partitionList);
+
+	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
+	foreach_oid(relationId, partitionList)
+	{
+		DropRelationForeignKeys(relationId, fKeyFlags);
+	}
+
 	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
 
 	CreateCitusLocalTable(parentOid, cascadeViaForeignKeys);
@@ -378,7 +394,11 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 	{
 		CreateCitusLocalTable(relationId, false);
 	}
+
 	ExecuteAndLogUtilityCommandList(attachPartitionCommands);
+
+	bool skipValidation = true;
+	ExecuteForeignKeyCreateCommandList(fkeyCreationCommands, skipValidation);
 }
 
 

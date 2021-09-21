@@ -543,9 +543,12 @@ SELECT create_distributed_table('partitioned_distributed','a');
 \c - - - :worker_1_port
 SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_distributed%' ORDER BY relname;
 \c - - - :master_port
+SET search_path TO citus_local_tables_test_schema;
+SET client_min_messages TO ERROR;
+DROP TABLE partitioned_distributed;
+RESET client_min_messages;
 
 -- verify that mx nodes have the shell table
-SET search_path TO citus_local_tables_test_schema;
 CREATE TABLE partitioned_mx (a INT UNIQUE) PARTITION BY RANGE(a);
 CREATE TABLE partitioned_mx_1 PARTITION OF partitioned_mx FOR VALUES FROM (1) TO (4);
 CREATE TABLE partitioned_mx_2 PARTITION OF partitioned_mx FOR VALUES FROM (5) TO (8);
@@ -557,6 +560,10 @@ CREATE TABLE partitioned_mx_3 PARTITION OF partitioned_mx FOR VALUES FROM (9) TO
 SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relname;
 \c - - - :master_port
 SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
+SET search_path TO citus_local_tables_test_schema;
+SET client_min_messages TO ERROR;
+DROP TABLE partitioned_mx;
+RESET client_min_messages;
 -- test cascading via foreign keys
 CREATE TABLE cas_1 (a INT UNIQUE);
 CREATE TABLE cas_par (a INT UNIQUE) PARTITION BY RANGE(a);
@@ -567,10 +574,21 @@ CREATE TABLE cas_par2 (a INT UNIQUE) PARTITION BY RANGE(a);
 CREATE TABLE cas_par2_1 PARTITION OF cas_par2 FOR VALUES FROM (1) TO (4);
 CREATE TABLE cas_par2_2 PARTITION OF cas_par2 FOR VALUES FROM (5) TO (8);
 ALTER TABLE cas_par2_1 ADD CONSTRAINT fkey_cas_test_2 FOREIGN KEY (a) REFERENCES cas_1(a);
--- this should error out as cascade_via_foreign_keys is not set to true
+-- this should error out as we should call the conversion from the parent
 SELECT citus_add_local_table_to_metadata('cas_par2_2');
+-- these two should error out as the foreign keys are not inherited from the parent
+SELECT citus_add_local_table_to_metadata('cas_par2');
+SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
+-- drop the foreign keys and establish them again using the parent table
+ALTER TABLE cas_par_1 DROP CONSTRAINT fkey_cas_test_1;
+ALTER TABLE cas_par2_1 DROP CONSTRAINT fkey_cas_test_2;
+ALTER TABLE cas_par ADD CONSTRAINT fkey_cas_test_1 FOREIGN KEY (a) REFERENCES cas_1(a);
+ALTER TABLE cas_par2 ADD CONSTRAINT fkey_cas_test_2 FOREIGN KEY (a) REFERENCES cas_1(a);
+-- this should error out as cascade_via_foreign_keys is not set to true
+SELECT citus_add_local_table_to_metadata('cas_par2');
 -- this should work
-SELECT citus_add_local_table_to_metadata('cas_par2_2', cascade_via_foreign_keys=>true);
+SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
+
 SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
 -- cleanup at exit
 SET client_min_messages TO ERROR;

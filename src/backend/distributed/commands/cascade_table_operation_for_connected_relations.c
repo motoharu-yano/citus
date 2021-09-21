@@ -33,6 +33,7 @@
 
 
 static void EnsureSequentialModeForCitusTableCascadeFunction(List *relationIdList);
+static List * GetPartitionRelationIds(List *relationIdList);
 static void LockRelationsWithLockMode(List *relationIdList, LOCKMODE lockMode);
 static List * RemovePartitionRelationIds(List *relationIdList);
 static void DropRelationIdListForeignKeys(List *relationIdList, int fKeyFlags);
@@ -89,6 +90,21 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	List *nonPartitionRelationIdList =
 		RemovePartitionRelationIds(fKeyConnectedRelationIdList);
 
+	List *partitonRelationList = GetPartitionRelationIds(fKeyConnectedRelationIdList);
+	List *detachPartitionCommands = NIL;
+	List *attachPartitionCommands = NIL;
+
+	Oid partitionRelationId = InvalidOid;
+	foreach_oid(partitionRelationId, partitonRelationList)
+	{
+		detachPartitionCommands =
+			lappend(detachPartitionCommands,
+					GenerateDetachPartitionCommand(partitionRelationId));
+		attachPartitionCommands =
+			lappend(attachPartitionCommands,
+					GenerateAlterTableAttachPartitionCommand(partitionRelationId));
+	}
+
 	/*
 	 * Our foreign key subgraph can have distributed tables which might already
 	 * be modified in current transaction. So switch to sequential execution
@@ -96,9 +112,11 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	 */
 	EnsureSequentialModeForCitusTableCascadeFunction(nonPartitionRelationIdList);
 
+	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
+
 	/* store foreign key creation commands before dropping them */
 	List *fKeyCreationCommands =
-		GetFKeyCreationCommandsForRelationIdList(nonPartitionRelationIdList);
+		GetFKeyCreationCommandsForRelationIdList(fKeyConnectedRelationIdList);
 
 	/*
 	 * Note that here we only drop referencing foreign keys for each relation.
@@ -106,13 +124,38 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	 * relations' referencing foreign keys.
 	 */
 	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
-	DropRelationIdListForeignKeys(nonPartitionRelationIdList, fKeyFlags);
+	DropRelationIdListForeignKeys(fKeyConnectedRelationIdList, fKeyFlags);
 	ExecuteCascadeOperationForRelationIdList(nonPartitionRelationIdList,
 											 cascadeOperationType);
 
 	/* now recreate foreign keys on tables */
 	bool skip_validation = true;
 	ExecuteForeignKeyCreateCommandList(fKeyCreationCommands, skip_validation);
+
+	ExecuteAndLogUtilityCommandList(attachPartitionCommands);
+}
+
+
+/*
+ * RemovePartitionRelationIds returns a list of relation id's by removing
+ * partition relation id's from given relationIdList.
+ */
+static List *
+GetPartitionRelationIds(List *relationIdList)
+{
+	List *partitionRelationIdList = NIL;
+
+	Oid relationId = InvalidOid;
+	foreach_oid(relationId, relationIdList)
+	{
+		if (PartitionTable(relationId))
+		{
+			partitionRelationIdList = lappend_oid(partitionRelationIdList, relationId);
+		}
+
+	}
+
+	return partitionRelationIdList;
 }
 
 
