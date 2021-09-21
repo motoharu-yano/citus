@@ -152,7 +152,6 @@ GetPartitionRelationIds(List *relationIdList)
 		{
 			partitionRelationIdList = lappend_oid(partitionRelationIdList, relationId);
 		}
-
 	}
 
 	return partitionRelationIdList;
