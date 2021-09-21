@@ -588,8 +588,16 @@ ALTER TABLE cas_par2 ADD CONSTRAINT fkey_cas_test_2 FOREIGN KEY (a) REFERENCES c
 SELECT citus_add_local_table_to_metadata('cas_par2');
 -- this should work
 SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
-
+-- verify that the tables are converted
 SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
+-- undistribute table
+-- this one should error out since we don't set the cascade option as true
+SELECT undistribute_table('cas_par2');
+-- this one should work
+SELECT undistribute_table('cas_par2', cascade_via_foreign_keys=>true);
+-- add a non-inherited fkey and verify it fails when trying to convert
+ALTER TABLE cas_par2_1 ADD CONSTRAINT fkey_cas_test_3 FOREIGN KEY (a) REFERENCES cas_1(a);
+SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
 -- cleanup at exit
 SET client_min_messages TO ERROR;
 DROP SCHEMA citus_local_tables_test_schema, "CiTUS!LocalTables", "test_\'index_schema" CASCADE;

@@ -944,6 +944,7 @@ SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>t
 
 (1 row)
 
+-- verify that the tables are converted
 SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
          relname
 ---------------------------------------------------------------------
@@ -977,6 +978,49 @@ SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
  cas_par_a_key_1190091
 (28 rows)
 
+-- undistribute table
+-- this one should error out since we don't set the cascade option as true
+SELECT undistribute_table('cas_par2');
+ERROR:  cannot complete operation because table cas_par2 has a foreign key
+-- this one should work
+SELECT undistribute_table('cas_par2', cascade_via_foreign_keys=>true);
+NOTICE:  converting the partitions of citus_local_tables_test_schema.cas_par2
+NOTICE:  creating a new table for citus_local_tables_test_schema.cas_par2
+NOTICE:  dropping the old citus_local_tables_test_schema.cas_par2
+NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_par2
+NOTICE:  creating a new table for citus_local_tables_test_schema.cas_1
+NOTICE:  moving the data of citus_local_tables_test_schema.cas_1
+NOTICE:  dropping the old citus_local_tables_test_schema.cas_1
+NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_1
+NOTICE:  converting the partitions of citus_local_tables_test_schema.cas_par
+NOTICE:  creating a new table for citus_local_tables_test_schema.cas_par
+NOTICE:  dropping the old citus_local_tables_test_schema.cas_par
+NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_par
+NOTICE:  creating a new table for citus_local_tables_test_schema.cas_par_1
+NOTICE:  moving the data of citus_local_tables_test_schema.cas_par_1
+NOTICE:  dropping the old citus_local_tables_test_schema.cas_par_1
+NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_par_1
+NOTICE:  creating a new table for citus_local_tables_test_schema.cas_par_2
+NOTICE:  moving the data of citus_local_tables_test_schema.cas_par_2
+NOTICE:  dropping the old citus_local_tables_test_schema.cas_par_2
+NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_par_2
+NOTICE:  creating a new table for citus_local_tables_test_schema.cas_par2_1
+NOTICE:  moving the data of citus_local_tables_test_schema.cas_par2_1
+NOTICE:  dropping the old citus_local_tables_test_schema.cas_par2_1
+NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_par2_1
+NOTICE:  creating a new table for citus_local_tables_test_schema.cas_par2_2
+NOTICE:  moving the data of citus_local_tables_test_schema.cas_par2_2
+NOTICE:  dropping the old citus_local_tables_test_schema.cas_par2_2
+NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_par2_2
+ undistribute_table
+---------------------------------------------------------------------
+
+(1 row)
+
+-- add a non-inherited fkey and verify it fails when trying to convert
+ALTER TABLE cas_par2_1 ADD CONSTRAINT fkey_cas_test_3 FOREIGN KEY (a) REFERENCES cas_1(a);
+SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
+ERROR:  cannot cascade operation via foreign keys as partition table citus_local_tables_test_schema.cas_par2_1 involved in a foreign key relationship that is not inherited from it's parent table
 -- cleanup at exit
 SET client_min_messages TO ERROR;
 DROP SCHEMA citus_local_tables_test_schema, "CiTUS!LocalTables", "test_\'index_schema" CASCADE;
