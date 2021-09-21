@@ -83,13 +83,6 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	 */
 	ErrorIfAnyPartitionRelationInvolvedInNonInheritedFKey(fKeyConnectedRelationIdList);
 
-	/*
-	 * We shouldn't cascade through foreign keys on partition tables as citus
-	 * table functions already have their own logics to handle partition relations.
-	 */
-	List *nonPartitionRelationIdList =
-		RemovePartitionRelationIds(fKeyConnectedRelationIdList);
-
 	List *partitonRelationList = GetPartitionRelationIds(fKeyConnectedRelationIdList);
 	List *detachPartitionCommands = NIL;
 	List *attachPartitionCommands = NIL;
@@ -110,9 +103,7 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	 * be modified in current transaction. So switch to sequential execution
 	 * before executing any ddl's to prevent erroring out later in this function.
 	 */
-	EnsureSequentialModeForCitusTableCascadeFunction(nonPartitionRelationIdList);
-
-	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
+	EnsureSequentialModeForCitusTableCascadeFunction(fKeyConnectedRelationIdList);
 
 	/* store foreign key creation commands before dropping them */
 	List *fKeyCreationCommands =
@@ -125,7 +116,9 @@ CascadeOperationForConnectedRelations(Oid relationId, LOCKMODE lockMode,
 	 */
 	int fKeyFlags = INCLUDE_REFERENCING_CONSTRAINTS | INCLUDE_ALL_TABLE_TYPES;
 	DropRelationIdListForeignKeys(fKeyConnectedRelationIdList, fKeyFlags);
-	ExecuteCascadeOperationForRelationIdList(nonPartitionRelationIdList,
+
+	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
+	ExecuteCascadeOperationForRelationIdList(fKeyConnectedRelationIdList,
 											 cascadeOperationType);
 
 	/* now recreate foreign keys on tables */
