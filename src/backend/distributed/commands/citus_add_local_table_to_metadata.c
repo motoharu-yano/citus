@@ -131,6 +131,11 @@ citus_add_local_table_to_metadata_internal(Oid relationId, bool cascadeViaForeig
 
 	if (PartitionTable(relationId))
 	{
+		/*
+		 * We do not allow converting only partitions into Citus Local Tables.
+		 * Users should call the UDF citus_add_local_table_to_metadata with the
+		 * parent table; then the whole partitioned table will be converted.
+		 */
 		Oid parentRelationId = PartitionParentOid(relationId);
 		char *parentRelationName = get_rel_name(parentRelationId);
 		ereport(ERROR, (errmsg("cannot convert the table because "
@@ -350,6 +355,14 @@ CreateCitusLocalTable(Oid relationId, bool cascadeViaForeignKeys)
 }
 
 
+/*
+ * CreatePartitionedCitusLocalTable takes the relation id of the parent table of a
+ * partitioned table, to convert it into a Citus Local Table. If the operation needs
+ * to be cascaded, it directly calls CreateCitusLocalTable, with an early return.
+ * If not, it means this is a simple partitioned table with no foreign key.
+ * Then this function will detact+convert+attach all of the partitions one by one,
+ * as well as the parent table.
+ */
 void
 CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 {
@@ -371,6 +384,7 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 	Oid relationId = InvalidOid;
 	foreach_oid(relationId, partitionList)
 	{
+		/* generate attach+detach commands here, to execute later */
 		detachPartitionCommands = lappend(detachPartitionCommands,
 										  GenerateDetachPartitionCommand(relationId));
 		attachPartitionCommands = lappend(attachPartitionCommands,
@@ -388,6 +402,10 @@ CreatePartitionedCitusLocalTable(Oid parentOid, bool cascadeViaForeignKeys)
 
 	ExecuteAndLogUtilityCommandList(detachPartitionCommands);
 
+	/*
+	 * Here, all attach and detach commands are generated, all foreign keys are dropped,
+	 * then we can start converting the tables one by one.
+	 */
 	CreateCitusLocalTable(parentOid, cascadeViaForeignKeys);
 
 	foreach_oid(relationId, partitionList)
