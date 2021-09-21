@@ -559,7 +559,6 @@ CREATE TABLE partitioned_mx_3 PARTITION OF partitioned_mx FOR VALUES FROM (9) TO
 \c - - - :worker_1_port
 SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relname;
 \c - - - :master_port
-SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
 SET search_path TO citus_local_tables_test_schema;
 SET client_min_messages TO ERROR;
 DROP TABLE partitioned_mx;
@@ -590,6 +589,11 @@ SELECT citus_add_local_table_to_metadata('cas_par2');
 SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
 -- verify that the tables are converted
 SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
+-- verify on the mx worker
+\c - - - :worker_1_port
+SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
+\c - - - :master_port
+SET search_path TO citus_local_tables_test_schema;
 -- undistribute table
 -- this one should error out since we don't set the cascade option as true
 SELECT undistribute_table('cas_par2');
@@ -598,6 +602,11 @@ SELECT undistribute_table('cas_par2', cascade_via_foreign_keys=>true);
 -- add a non-inherited fkey and verify it fails when trying to convert
 ALTER TABLE cas_par2_1 ADD CONSTRAINT fkey_cas_test_3 FOREIGN KEY (a) REFERENCES cas_1(a);
 SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
+-- verify undistribute_table works proper for the mx worker
+\c - - - :worker_1_port
+SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
+\c - - - :master_port
+SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
 -- cleanup at exit
 SET client_min_messages TO ERROR;
 DROP SCHEMA citus_local_tables_test_schema, "CiTUS!LocalTables", "test_\'index_schema" CASCADE;

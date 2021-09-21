@@ -900,13 +900,6 @@ SELECT relname FROM pg_class WHERE relname LIKE 'partitioned_mx%' ORDER BY relna
 (8 rows)
 
 \c - - - :master_port
-SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
-NOTICE:  dropping metadata on the node (localhost,57637)
- stop_metadata_sync_to_node
----------------------------------------------------------------------
-
-(1 row)
-
 SET search_path TO citus_local_tables_test_schema;
 SET client_min_messages TO ERROR;
 DROP TABLE partitioned_mx;
@@ -978,6 +971,29 @@ SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
  cas_par_a_key_1190091
 (28 rows)
 
+-- verify on the mx worker
+\c - - - :worker_1_port
+SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
+     relname
+---------------------------------------------------------------------
+ cas_1
+ cas_1_a_key
+ cas_par
+ cas_par2
+ cas_par2_1
+ cas_par2_1_a_key
+ cas_par2_2
+ cas_par2_2_a_key
+ cas_par2_a_key
+ cas_par_1
+ cas_par_1_a_key
+ cas_par_2
+ cas_par_2_a_key
+ cas_par_a_key
+(14 rows)
+
+\c - - - :master_port
+SET search_path TO citus_local_tables_test_schema;
 -- undistribute table
 -- this one should error out since we don't set the cascade option as true
 SELECT undistribute_table('cas_par2');
@@ -1021,6 +1037,21 @@ NOTICE:  renaming the new table to citus_local_tables_test_schema.cas_par2_2
 ALTER TABLE cas_par2_1 ADD CONSTRAINT fkey_cas_test_3 FOREIGN KEY (a) REFERENCES cas_1(a);
 SELECT citus_add_local_table_to_metadata('cas_par2', cascade_via_foreign_keys=>true);
 ERROR:  cannot cascade operation via foreign keys as partition table citus_local_tables_test_schema.cas_par2_1 involved in a foreign key relationship that is not inherited from it's parent table
+-- verify undistribute_table works proper for the mx worker
+\c - - - :worker_1_port
+SELECT relname FROM pg_class WHERE relname LIKE 'cas\_%' ORDER BY relname;
+ relname
+---------------------------------------------------------------------
+(0 rows)
+
+\c - - - :master_port
+SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
+NOTICE:  dropping metadata on the node (localhost,57637)
+ stop_metadata_sync_to_node
+---------------------------------------------------------------------
+
+(1 row)
+
 -- cleanup at exit
 SET client_min_messages TO ERROR;
 DROP SCHEMA citus_local_tables_test_schema, "CiTUS!LocalTables", "test_\'index_schema" CASCADE;
