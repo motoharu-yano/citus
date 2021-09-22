@@ -94,7 +94,7 @@ static void IncrementUtilityHookCountersIfNecessary(Node *parsetree);
 static void PostStandardProcessUtility(Node *parsetree);
 static void DecrementUtilityHookCountersIfNecessary(Node *parsetree);
 static bool IsDropSchemaOrDB(Node *parsetree);
-static bool ShouldUndistributeCitusLocalTables(void);
+static bool ShouldCheckUndistributeCitusLocalTables(void);
 
 
 /*
@@ -270,7 +270,7 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 			 * can happen due to various kinds of drop commands, we immediately
 			 * undistribute them at the end of the command.
 			 */
-			if (ShouldUndistributeCitusLocalTables())
+			if (ShouldCheckUndistributeCitusLocalTables())
 			{
 				UndistributeDisconnectedCitusLocalTables();
 			}
@@ -686,7 +686,8 @@ ProcessUtilityInternal(PlannedStmt *pstmt,
 /*
  * UndistributeDisconnectedCitusLocalTables undistributes citus local tables that
  * are not connected to any reference tables via their individual foreign key
- * subgraphs.
+ * subgraphs. Note that this function undistributes only the auto-converted tables,
+ * i.e the ones that are converted by Citus by cascading through foreign keys.
  */
 void
 UndistributeDisconnectedCitusLocalTables(void)
@@ -713,7 +714,7 @@ UndistributeDisconnectedCitusLocalTables(void)
 		}
 		ReleaseSysCache(heapTuple);
 
-		if (ConnectedToReferenceTableViaFKey(citusLocalTableId))
+		if (!ShouldUndistributeCitusLocalTable(citusLocalTableId))
 		{
 			/* still connected to a reference table, skip it */
 			UnlockRelationOid(citusLocalTableId, lockMode);
@@ -744,11 +745,11 @@ UndistributeDisconnectedCitusLocalTables(void)
 
 
 /*
- * ShouldUndistributeCitusLocalTables returns true if we might need to check
- * citus local tables for their connectivity to reference tables.
+ * ShouldCheckUndistributeCitusLocalTables returns true if we might need to check
+ * citus local tables for undistributing automatically.
  */
 static bool
-ShouldUndistributeCitusLocalTables(void)
+ShouldCheckUndistributeCitusLocalTables(void)
 {
 	if (!ConstraintDropped)
 	{
