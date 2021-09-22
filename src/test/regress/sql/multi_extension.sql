@@ -346,6 +346,21 @@ SELECT * FROM multi_extension.print_extension_changes();
 ALTER EXTENSION citus UPDATE TO '10.2-1';
 SELECT * FROM multi_extension.print_extension_changes();
 
+-- Test upgrade paths for new udfs
+-- fix_partition_shard_index_names and worker_fix_partition_shard_index_names
+ALTER EXTENSION citus UPDATE TO '10.2-2';
+ALTER EXTENSION citus UPDATE TO '10.2-1';
+-- Should be empty result, even though the downgrade doesn't undo the upgrade, the
+-- function signature doesn't change, which is reflected here.
+SELECT * FROM multi_extension.print_extension_changes();
+
+ALTER EXTENSION citus UPDATE TO '10.2-2';
+SELECT * FROM multi_extension.print_extension_changes();
+
+-- Snapshot of state at 10.2-1
+ALTER EXTENSION citus UPDATE TO '10.2-1';
+SELECT * FROM multi_extension.print_extension_changes();
+
 DROP TABLE multi_extension.prev_objects, multi_extension.extension_diff;
 
 -- show running version

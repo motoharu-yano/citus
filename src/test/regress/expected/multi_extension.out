@@ -828,7 +828,7 @@ SELECT * FROM multi_extension.print_extension_changes();
 -- Snapshot of state at 10.2-1
 ALTER EXTENSION citus UPDATE TO '10.2-1';
 SELECT * FROM multi_extension.print_extension_changes();
-                    previous_object                         |                                      current_object
+                      previous_object                       |                                                                                     current_object
 ---------------------------------------------------------------------
  function citus_drop_all_shards(regclass,text,text) integer |
  function stop_metadata_sync_to_node(text,integer) void     |
@@ -847,6 +847,36 @@ SELECT * FROM multi_extension.print_extension_changes();
                                                             | function stop_metadata_sync_to_node(text,integer,boolean) void
                                                             | function worker_nextval(regclass) integer
 (16 rows)
+
+-- Test upgrade paths for new udfs
+-- fix_partition_shard_index_names and worker_fix_partition_shard_index_names
+ALTER EXTENSION citus UPDATE TO '10.2-2';
+ALTER EXTENSION citus UPDATE TO '10.2-1';
+-- Should be empty result, even though the downgrade doesn't undo the upgrade, the
+-- function signature doesn't change, which is reflected here.
+SELECT * FROM multi_extension.print_extension_changes();
+ previous_object | current_object
+---------------------------------------------------------------------
+(0 rows)
+
+ALTER EXTENSION citus UPDATE TO '10.2-2';
+SELECT * FROM multi_extension.print_extension_changes();
+ previous_object |                         current_object
+---------------------------------------------------------------------
+                 | function fix_partition_shard_index_names() SETOF regclass
+                 | function fix_partition_shard_index_names(regclass) void
+                 | function worker_fix_partition_shard_index_names(regclass) void
+(3 rows)
+
+-- Snapshot of state at 10.2-1
+ALTER EXTENSION citus UPDATE TO '10.2-1';
+SELECT * FROM multi_extension.print_extension_changes();
+                        previous_object                         | current_object
+---------------------------------------------------------------------
+ function fix_partition_shard_index_names() SETOF regclass      |
+ function fix_partition_shard_index_names(regclass) void        |
+ function worker_fix_partition_shard_index_names(regclass) void |
+(3 rows)
 
 DROP TABLE multi_extension.prev_objects, multi_extension.extension_diff;
 -- show running version
