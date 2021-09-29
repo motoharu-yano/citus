@@ -1868,15 +1868,15 @@ ALTER TABLE partitioning_test ATTACH PARTITION partitioning_test_2010
 -- Attach a table which has a different constraint
 ALTER TABLE partitioning_test ATTACH PARTITION partitioning_test_2011
       FOR VALUES FROM ('2011-01-01') TO ('2012-01-01');
-SELECT parent_table, partition_column, partition, from_value, to_value FROM time_partitions;
+SELECT parent_table, partition_column, partition, from_value, to_value FROM time_partitions ORDER BY parent_table, partition_column, partition, from_value, to_value;
                parent_table               | partition_column |                 partition                  | from_value |  to_value
 ---------------------------------------------------------------------
+ public.non_distributed_partitioned_table | a                | public.non_distributed_partitioned_table_1 | 0          | 10
  "schema-test"                            | time             | "schema-test_2009"                         | 01-01-2009 | 01-01-2010
  partitioning_test                        | time             | partitioning_test_2008                     | 01-01-2008 | 01-01-2009
  partitioning_test                        | time             | partitioning_test_2009                     | 01-01-2009 | 01-01-2010
  partitioning_test                        | time             | partitioning_test_2010                     | 01-01-2010 | 01-01-2011
  partitioning_test                        | time             | partitioning_test_2011                     | 01-01-2011 | 01-01-2012
- public.non_distributed_partitioned_table | a                | public.non_distributed_partitioned_table_1 | 0          | 10
 (6 rows)
 
 -- create the same partition to verify it behaves like in plain PG
