@@ -1193,7 +1193,7 @@ ALTER TABLE partitioning_test ATTACH PARTITION partitioning_test_2010
 ALTER TABLE partitioning_test ATTACH PARTITION partitioning_test_2011
       FOR VALUES FROM ('2011-01-01') TO ('2012-01-01');
 
-SELECT parent_table, partition_column, partition, from_value, to_value FROM time_partitions;
+SELECT parent_table, partition_column, partition, from_value, to_value FROM time_partitions ORDER BY parent_table, partition_column, partition, from_value, to_value;
 
 -- create the same partition to verify it behaves like in plain PG
 CREATE TABLE partitioning_test_2011 PARTITION OF partitioning_test FOR VALUES FROM ('2011-01-01') TO ('2012-01-01');
