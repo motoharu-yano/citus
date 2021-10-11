@@ -19,44 +19,56 @@ SELECT create_distributed_table ('colocation_table_2', 'a', colocate_with := 'no
 
 
 SELECT table_name, citus_table_type, distribution_column, shard_count FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2');
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') ORDER BY table_name, citus_table_type, distribution_column, shard_count;
+SELECT "Colocation Groups" FROM (
 SELECT STRING_AGG(table_name::text, ', ' ORDER BY 1) AS "Colocation Groups" FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1;
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1
+) t0 ORDER BY "Colocation Groups";
 
 -- test altering distribution column
 SELECT alter_distributed_table('dist_table', distribution_column := 'b');
 SELECT table_name, citus_table_type, distribution_column, shard_count FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2');
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') ORDER BY table_name, citus_table_type, distribution_column, shard_count;
+SELECT "Colocation Groups" FROM (
 SELECT STRING_AGG(table_name::text, ', ' ORDER BY 1) AS "Colocation Groups" FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1;
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1
+) t0 ORDER BY "Colocation Groups";
 
 -- test altering shard count
 SELECT alter_distributed_table('dist_table', shard_count := 6);
 SELECT table_name, citus_table_type, distribution_column, shard_count FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2');
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') ORDER BY table_name, citus_table_type, distribution_column, shard_count;
+SELECT "Colocation Groups" FROM (
 SELECT STRING_AGG(table_name::text, ', ' ORDER BY 1) AS "Colocation Groups" FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1;
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1
+) t0 ORDER BY "Colocation Groups";
 
 -- test altering colocation, note that shard count will also change
 SELECT alter_distributed_table('dist_table', colocate_with := 'alter_distributed_table.colocation_table');
 SELECT table_name, citus_table_type, distribution_column, shard_count FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2');
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') ORDER BY table_name, citus_table_type, distribution_column, shard_count;
+SELECT "Colocation Groups" FROM (
 SELECT STRING_AGG(table_name::text, ', ' ORDER BY 1) AS "Colocation Groups" FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1;
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1
+) t0 ORDER BY "Colocation Groups";
 
 -- test altering shard count with cascading, note that the colocation will be kept
 SELECT alter_distributed_table('dist_table', shard_count := 8, cascade_to_colocated := true);
 SELECT table_name, citus_table_type, distribution_column, shard_count FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2');
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') ORDER BY table_name, citus_table_type, distribution_column, shard_count;
+SELECT "Colocation Groups" FROM (
 SELECT STRING_AGG(table_name::text, ', ' ORDER BY 1) AS "Colocation Groups" FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1;
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1
+) t0 ORDER BY "Colocation Groups";
 
 -- test altering shard count without cascading, note that the colocation will be broken
 SELECT alter_distributed_table('dist_table', shard_count := 10, cascade_to_colocated := false);
 SELECT table_name, citus_table_type, distribution_column, shard_count FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2');
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') ORDER BY table_name, citus_table_type, distribution_column, shard_count;
+SELECT "Colocation Groups" FROM (
 SELECT STRING_AGG(table_name::text, ', ' ORDER BY 1) AS "Colocation Groups" FROM public.citus_tables
-    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1;
+    WHERE table_name IN ('dist_table', 'colocation_table', 'colocation_table_2') GROUP BY colocation_id ORDER BY 1
+) t0 ORDER BY "Colocation Groups";
 
 
 -- test partitions
