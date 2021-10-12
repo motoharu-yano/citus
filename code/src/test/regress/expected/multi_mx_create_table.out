@@ -492,12 +492,12 @@ ORDER BY table_name::text;
  app_analytics_events_mx                                | distributed      | app_id              |           4 | postgres
  articles_hash_mx                                       | distributed      | author_id           |           2 | postgres
  articles_single_shard_hash_mx                          | distributed      | author_id           |           1 | postgres
- citus_mx_test_schema.nation_hash                       | distributed      | n_nationkey         |          16 | postgres
- citus_mx_test_schema.nation_hash_collation_search_path | distributed      | n_nationkey         |           4 | postgres
- citus_mx_test_schema.nation_hash_composite_types       | distributed      | n_nationkey         |           4 | postgres
  citus_mx_test_schema_join_1.nation_hash                | distributed      | n_nationkey         |           4 | postgres
  citus_mx_test_schema_join_1.nation_hash_2              | distributed      | n_nationkey         |           4 | postgres
  citus_mx_test_schema_join_2.nation_hash                | distributed      | n_nationkey         |           4 | postgres
+ citus_mx_test_schema.nation_hash                       | distributed      | n_nationkey         |          16 | postgres
+ citus_mx_test_schema.nation_hash_collation_search_path | distributed      | n_nationkey         |           4 | postgres
+ citus_mx_test_schema.nation_hash_composite_types       | distributed      | n_nationkey         |           4 | postgres
  company_employees_mx                                   | distributed      | company_id          |           4 | postgres
  customer_mx                                            | reference        | <none>              |           1 | postgres
  labs_mx                                                | distributed      | id                  |           1 | postgres
@@ -523,12 +523,12 @@ ORDER BY table_name::text;
  app_analytics_events_mx                                | distributed      | app_id              |           4 | postgres
  articles_hash_mx                                       | distributed      | author_id           |           2 | postgres
  articles_single_shard_hash_mx                          | distributed      | author_id           |           1 | postgres
- citus_mx_test_schema.nation_hash                       | distributed      | n_nationkey         |          16 | postgres
- citus_mx_test_schema.nation_hash_collation_search_path | distributed      | n_nationkey         |           4 | postgres
- citus_mx_test_schema.nation_hash_composite_types       | distributed      | n_nationkey         |           4 | postgres
  citus_mx_test_schema_join_1.nation_hash                | distributed      | n_nationkey         |           4 | postgres
  citus_mx_test_schema_join_1.nation_hash_2              | distributed      | n_nationkey         |           4 | postgres
  citus_mx_test_schema_join_2.nation_hash                | distributed      | n_nationkey         |           4 | postgres
+ citus_mx_test_schema.nation_hash                       | distributed      | n_nationkey         |          16 | postgres
+ citus_mx_test_schema.nation_hash_collation_search_path | distributed      | n_nationkey         |           4 | postgres
+ citus_mx_test_schema.nation_hash_composite_types       | distributed      | n_nationkey         |           4 | postgres
  company_employees_mx                                   | distributed      | company_id          |           4 | postgres
  customer_mx                                            | reference        | <none>              |           1 | postgres
  labs_mx                                                | distributed      | id                  |           1 | postgres
@@ -579,6 +579,54 @@ SELECT shard_name, table_name, citus_table_type, shard_size FROM citus_shards OR
  articles_single_shard_hash_mx_1220106                          | articles_single_shard_hash_mx                          | distributed      |          0
  articles_single_shard_hash_mx_1220106                          | articles_single_shard_hash_mx                          | distributed      |          0
  articles_single_shard_hash_mx_1220106                          | articles_single_shard_hash_mx                          | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220033                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_1220035                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220037              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_1.nation_hash_2_1220039              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220041                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
+ citus_mx_test_schema_join_2.nation_hash_1220043                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
  citus_mx_test_schema.nation_hash_1220016                       | citus_mx_test_schema.nation_hash                       | distributed      |          0
  citus_mx_test_schema.nation_hash_1220016                       | citus_mx_test_schema.nation_hash                       | distributed      |          0
  citus_mx_test_schema.nation_hash_1220016                       | citus_mx_test_schema.nation_hash                       | distributed      |          0
@@ -675,54 +723,6 @@ SELECT shard_name, table_name, citus_table_type, shard_size FROM citus_shards OR
  citus_mx_test_schema.nation_hash_composite_types_1220050       | citus_mx_test_schema.nation_hash_composite_types       | distributed      |          0
  citus_mx_test_schema.nation_hash_composite_types_1220050       | citus_mx_test_schema.nation_hash_composite_types       | distributed      |          0
  citus_mx_test_schema.nation_hash_composite_types_1220051       | citus_mx_test_schema.nation_hash_composite_types       | distributed      |       8192
- citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220032                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220033                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220034                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_1220035                | citus_mx_test_schema_join_1.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220036              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220037              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220038              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_1.nation_hash_2_1220039              | citus_mx_test_schema_join_1.nation_hash_2              | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220040                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220041                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220042                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
- citus_mx_test_schema_join_2.nation_hash_1220043                | citus_mx_test_schema_join_2.nation_hash                | distributed      |          0
  company_employees_mx_1220107                                   | company_employees_mx                                   | distributed      |          0
  company_employees_mx_1220107                                   | company_employees_mx                                   | distributed      |          0
  company_employees_mx_1220107                                   | company_employees_mx                                   | distributed      |          0
