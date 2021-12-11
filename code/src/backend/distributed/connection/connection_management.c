@@ -1633,9 +1633,17 @@ CitusModifyWaitEvent(WaitEventSet *set, int pos, uint32 events, Latch *latch)
 		 * at PG_TRY() time, especially because we are not
 		 * re-throwing the error.
 		 */
+
+		errcontext("Context error");
+		EmitErrorReport();
+
 		MemoryContextSwitchTo(savedContext);
 
 		FlushErrorState();
+
+		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
+							errmsg("failed to CitusModifyWaitEvent"),
+							errhint("hint")));
 
 		/* let the callers know about the failure */
 		success = false;
