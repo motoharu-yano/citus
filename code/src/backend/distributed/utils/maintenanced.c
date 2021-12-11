@@ -383,9 +383,13 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 	 */
 	SignalMetadataSyncDaemon(databaseOid, SIGTERM);
 
+	elog(LOG, "entering main loop on database %u user %u", databaseOid, myDbData->userOid);
+
 	/* enter main loop */
 	while (!got_SIGTERM)
 	{
+		elog(LOG, "start main loop iteration on %u user %u", databaseOid, myDbData->userOid);
+
 		int latchFlags = WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH;
 		double timeout = 10000.0; /* use this if the deadlock detection is disabled */
 		bool foundDeadlock = false;
@@ -393,6 +397,8 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 		CHECK_FOR_INTERRUPTS();
 
 		CitusTableCacheFlushInvalidatedEntries();
+
+		elog(LOG, "finished CitusTableCacheFlushInvalidatedEntries on database %u user %u", databaseOid, myDbData->userOid);
 
 		/*
 		 * XXX: Each task should clear the metadata cache before every iteration
@@ -461,6 +467,8 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			CommitTransactionCommand();
 		}
 #endif
+
+		elog(LOG, "finished HAVE_LIBCURL on database %u user %u", databaseOid, myDbData->userOid);
 
 		pid_t metadataSyncBgwPid = 0;
 		BgwHandleStatus metadataSyncStatus =
@@ -532,6 +540,8 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			timeout = Min(timeout, nextTimeout);
 		}
 
+		elog(LOG, "finished metadata sync on database %u user %u", databaseOid, myDbData->userOid);
+
 		/*
 		 * If enabled, run 2PC recovery on primary nodes (where !RecoveryInProgress()),
 		 * since we'll write to the pg_dist_transaction log.
@@ -573,6 +583,8 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			/* make sure we don't wait too long */
 			timeout = Min(timeout, Recover2PCInterval);
 		}
+
+		elog(LOG, "finished 2pc recovery on database %u user %u", databaseOid, myDbData->userOid);
 
 		/* the config value -1 disables the distributed deadlock detection  */
 		if (DistributedDeadlockDetectionTimeoutFactor != -1.0)
@@ -622,6 +634,8 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			timeout = Min(timeout, deadlockTimeout);
 		}
 
+		elog(LOG, "finished disabling distributed deadlock detection on database %u user %u", databaseOid, myDbData->userOid);
+
 		if (!RecoveryInProgress() && DeferShardDeleteInterval > 0 &&
 			TimestampDifferenceExceeds(lastShardCleanTime, GetCurrentTimestamp(),
 									   DeferShardDeleteInterval))
@@ -661,6 +675,7 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			timeout = Min(timeout, DeferShardDeleteInterval);
 		}
 
+		elog(LOG, "finished dropping distributed shards on database %u user %u", databaseOid, myDbData->userOid);
 
 		/*
 		 * Wait until timeout, or until somebody wakes us up. Also cast the timeout to
@@ -671,6 +686,7 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 		/* emergency bailout if postmaster has died */
 		if (rc & WL_POSTMASTER_DEATH)
 		{
+			elog(LOG, "emergency bailout because postmaster has died on database %u user %u", databaseOid, myDbData->userOid);
 			proc_exit(1);
 		}
 
@@ -683,6 +699,7 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			if (myDbData->userOid != GetSessionUserId())
 			{
 				/* return code of 1 requests worker restart */
+				elog(LOG, "exit because of configuration change on database %u user %u", databaseOid, myDbData->userOid);
 				proc_exit(1);
 			}
 
@@ -696,11 +713,15 @@ CitusMaintenanceDaemonMain(Datum main_arg)
 			 */
 		}
 
+		elog(LOG, "finish WL_LATCH_SET on %u user %u", databaseOid, myDbData->userOid);
+
 		if (got_SIGHUP)
 		{
 			got_SIGHUP = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
+
+		elog(LOG, "finish main loop iteration on %u user %u", databaseOid, myDbData->userOid);
 	}
 
 	if (metadataSyncBgwHandle)
