@@ -891,7 +891,7 @@ WaitEventSetFromMultiConnectionStates(List *connections, int *waitCount)
 		if (waitEventSetIndex == WAIT_EVENT_SET_INDEX_FAILED)
 		{
 			ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
-							errmsg("connection establishment for node %s:%d failed",
+							errmsg("WaitEventSetFromMultiConnectionStates: connection establishment for node %s:%d failed",
 								   connectionState->connection->hostname,
 								   connectionState->connection->port),
 							errhint("Check both the local and remote server logs for the "
@@ -1053,7 +1053,7 @@ FinishConnectionListEstablishment(List *multiConnectionList)
 					if (!success)
 					{
 						ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
-										errmsg("connection establishment for node %s:%d "
+										errmsg("FinishConnectionListEstablishment: connection establishment for node %s:%d "
 											   "failed", connection->hostname,
 											   connection->port),
 										errhint("Check both the local and remote server "

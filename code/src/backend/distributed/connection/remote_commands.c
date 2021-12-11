@@ -882,7 +882,7 @@ WaitForAllConnections(List *connectionList, bool raiseInterrupts)
 						if (!success)
 						{
 							ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
-											errmsg("connection establishment for "
+											errmsg("WaitForAllConnections: connection establishment for "
 												   "node %s:%d failed",
 												   connection->hostname,
 												   connection->port),
@@ -1040,7 +1040,7 @@ BuildWaitEventSet(MultiConnection **allConnections, int totalConnectionCount,
 		if (waitEventSetIndex == WAIT_EVENT_SET_INDEX_FAILED)
 		{
 			ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
-							errmsg("connection establishment for node %s:%d failed",
+							errmsg("BuildWaitEventSet: connection establishment for node %s:%d failed",
 								   connection->hostname, connection->port),
 							errhint("Check both the local and remote server logs for the "
 									"connection establishment errors.")));
