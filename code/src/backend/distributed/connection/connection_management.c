@@ -1580,9 +1580,17 @@ CitusAddWaitEventSetToSet(WaitEventSet *set, uint32 events, pgsocket fd,
 		 * at PG_TRY() time, especially because we are not
 		 * re-throwing the error.
 		 */
+
+		errcontext("Context error");
+		EmitErrorReport();
+
 		MemoryContextSwitchTo(savedContext);
 
 		FlushErrorState();
+
+		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
+							errmsg("failed to CitusAddWaitEventSetToSet"),
+							errhint("hint")));
 
 		/* let the callers know about the failure */
 		waitEventSetIndex = WAIT_EVENT_SET_INDEX_FAILED;
