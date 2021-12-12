@@ -1581,16 +1581,16 @@ CitusAddWaitEventSetToSet(WaitEventSet *set, uint32 events, pgsocket fd,
 		 * re-throwing the error.
 		 */
 
-		errcontext("Context error");
-		EmitErrorReport();
+		//errcontext("Context error");
+		//EmitErrorReport();
 
 		MemoryContextSwitchTo(savedContext);
 
 		FlushErrorState();
 
-		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
-							errmsg("failed to CitusAddWaitEventSetToSet"),
-							errhint("hint")));
+		//ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
+		//					errmsg("failed to CitusAddWaitEventSetToSet"),
+		//					errhint("hint")));
 
 		/* let the callers know about the failure */
 		waitEventSetIndex = WAIT_EVENT_SET_INDEX_FAILED;
@@ -1634,16 +1634,16 @@ CitusModifyWaitEvent(WaitEventSet *set, int pos, uint32 events, Latch *latch)
 		 * re-throwing the error.
 		 */
 
-		errcontext("Context error");
-		EmitErrorReport();
+		//rrcontext("Context error");
+		//EmitErrorReport();
 
 		MemoryContextSwitchTo(savedContext);
 
 		FlushErrorState();
 
-		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
-							errmsg("failed to CitusModifyWaitEvent"),
-							errhint("hint")));
+		//ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
+		//					errmsg("failed to CitusModifyWaitEvent"),
+		//					errhint("hint")));
 
 		/* let the callers know about the failure */
 		success = false;
